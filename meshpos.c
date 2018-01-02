@@ -19,12 +19,12 @@ struct wap_t init_wap(void){
     return d;
 }
 
-unsigned int to_struct(char *str ,struct wap_t *wap){
+unsigned int to_struct(char *str ,struct wap_t *waps){
     FLAG flag = stop_e;
     int i = 0, j = 0, k = 0, c = 0;
     unsigned int parameter_count = 0;
     char parameter[PARAMTER_LAN] = {'\0'};
-    char data[160] = {'\0'};
+    char data[120] = {'\0'};
     char host[18] = {'\0'};
     char ab[40] = {'\0'}, ac[40] = {'\0'}, bc[40] = {'\0'};
     char rssi_5g[5] = {'\0'}, rssi_2g[5] = {'\0'};
@@ -91,31 +91,106 @@ unsigned int to_struct(char *str ,struct wap_t *wap){
     strcat(data, ac);
 
     //linked list
-    wap[0].isHost = 1;
-    wap[0].bssid_tag = 0;
-    wap[1].bssid_tag = 1;
-    wap[2].bssid_tag = 2;
-    wap[0].neighbor.link = &wap[1];
-    wap[1].neighbor.link = &wap[2];
-    wap[2].neighbor.link = &wap[0];
+    waps[0].isHost = 1;
+    waps[0].bssid_tag = 0;
+    waps[1].bssid_tag = 1;
+    waps[2].bssid_tag = 2;
+    waps[0].neighbor.link = &waps[1];
+    waps[1].neighbor.link = &waps[2];
+    waps[2].neighbor.link = &waps[0];
 
     //assign
     for(j=0;j<3;j++){
         k=0;
         for(i+=5;data[i] != ',';i++)
-            wap[j].neighbor.link->bssid[k++] = data[i];
+            waps[j].neighbor.link->bssid[k++] = data[i];
 
         k=0;
         for(i+=8;data[i] != '/';i++)
             rssi_5g[k++] = data[i];
-        wap[j].neighbor.rssi_5g = atoi(rssi_5g);
+        waps[j].neighbor.rssi_5g = atoi(rssi_5g);
 
         k=0;
         for(i+=1 ;data[i] != ';';i++)
             rssi_2g[k++] = data[i];
-        wap[j].neighbor.rssi_2g = atoi(rssi_2g);
+        waps[j].neighbor.rssi_2g = atoi(rssi_2g);
         i++;
     }
 
     return 1;
 }
+
+void rssi2dist(struct wap_t *waps){
+    float rssi;
+    /* 5G 與 2.4G 方程式不同 */
+    rssi = waps[0].neighbor.rssi_5g;
+    waps[0].neighbor.distance = exp((rssi+32.851)/(-8.782));
+
+    rssi = waps[1].neighbor.rssi_5g;
+    waps[1].neighbor.distance = exp((rssi+32.851)/(-8.782));
+
+    rssi = waps[2].neighbor.rssi_5g;
+    waps[2].neighbor.distance = exp((rssi+32.851)/(-8.782));
+}
+
+void dist2coordinate(struct wap_t *waps){
+    float d01=0.0, d02=0.0, d12=0.0;
+    float alpha=0.0, cosine=0.0;
+
+    //waps[0]
+    waps[0].X = 0;
+    waps[0].Y = 0;
+
+    //waps[1]
+    waps[1].X = waps[0].neighbor.distance;
+    waps[1].Y = 0;
+
+    //waps[2]
+    d01 = waps[0].neighbor.distance; //ab
+    d02 = waps[2].neighbor.distance; //ac
+    d12 = waps[1].neighbor.distance; //bc
+//    d01 = 2.0; //ab
+//    d02 = 5.0; //ac
+//    d12 = 3.5; //bc
+
+    cosine = (pow(d01,2) + pow(d02,2) - pow(d12,2)) / (2*d01*d02);
+
+    //長度失焦
+    if(cosine > 1)
+        cosine = 1;
+    else if(cosine < -1)
+        cosine = -1;
+
+    alpha = acos(cosine);
+    waps[2].X = (float)(d02*cos(alpha)); //得C座標
+    waps[2].Y = (float)(d02*sin(alpha));
+
+    if(waps[2].Y == 0.0)
+        printf("Triangle side out of focus!\n"); //三角形邊長失焦
+
+    //利用畢氏定理去補，或是直接 y 給 0.5 之類的小值
+    //printf("(%f ,%f)\n", waps[2].X,waps[2].Y);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

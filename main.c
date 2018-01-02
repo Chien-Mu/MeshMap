@@ -8,12 +8,14 @@ char *cgi = "-host 06:00:00:00:00:00;"
 
 int main(int argc, char *argv[])
 {
-    struct wap_t wap[3];
-    wap[0] = init_wap();
-    wap[1] = init_wap();
-    wap[2] = init_wap();        
+    struct wap_t waps[3];
+    waps[0] = init_wap();
+    waps[1] = init_wap();
+    waps[2] = init_wap();
 
-    to_struct(cgi, wap);
-    printf("%s",cgi);
+    if(to_struct(cgi, waps)){
+        rssi2dist(waps);
+        dist2coordinate(waps);
+    }
     return 0;
 }
