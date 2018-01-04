@@ -33,22 +33,40 @@ int main(int argc, char *argv[])
 
     //input waps array
     if(isfile == 1){
-        readfile(_argv[0], &_argc, _argv);
+        if(readfile(_argv[0], &_argc, _argv)){
+            release(&_argc, _argv);
+            print_file_error(_argv[0]);
+            return 0;
+        }
         if(argv_to_struct(_argc, _argv, waps)){
             release(&_argc, _argv);
+            print_file_error(_argv[0]);
             return 0;
         }
     }else
-        if(argv_to_struct(argc, argv, waps))
+        if(argv_to_struct(argc, argv, waps)){
+            print_para_error();
             return 0;
+        }
 
     //calc
     rssi2dist(waps);
     dist2coordinate(waps);
 
-
+    //output
+    printf("5G;\n");
     for(i=0;i<3;i++)
-        printf("(%.2f,%.2f)\n", waps[i].X,waps[i].Y);
+        printf("coor=%s=(%.2f,%.2f);\n", waps[i].bssid, waps[i].X_5g,waps[i].Y_5g);
+    for(i=0;i<3;i++)
+        printf("dist=%s-%s=%.1fm=%d;\n", waps[i].bssid, waps[i].neighbor.link->bssid,
+               waps[i].neighbor.distance_5g, waps[i].neighbor.rssi_5g);
+
+    printf("2.4G;\n");
+    for(i=0;i<3;i++)
+        printf("coor=%s=(%.2f,%.2f);\n", waps[i].bssid, waps[i].X_2g,waps[i].Y_2g);
+    for(i=0;i<3;i++)
+        printf("dist=%s-%s=%.1fm=%d;\n", waps[i].bssid, waps[i].neighbor.link->bssid,
+               waps[i].neighbor.distance_2g, waps[i].neighbor.rssi_2g);
 
     //release
     if(isfile == 1)

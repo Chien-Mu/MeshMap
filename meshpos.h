@@ -19,23 +19,27 @@ struct wap_t{
     char bssid[18];
     unsigned int bssid_tag;
     unsigned int isHost;
-    float X;                    //計算結果位置
-    float Y;
+    float X_5g;                    //計算結果位置
+    float Y_5g;
+    float X_2g;
+    float Y_2g;
     struct neighbor_t{        
         struct wap_t *link;
         int rssi_5g;
         int rssi_2g;
-        float distance;         //計算結果距離
+        float distance_5g;         //計算結果距離
+        float distance_2g;
     }neighbor;
 };
 
 struct wap_t init_wap(void);
+void print_file_error(const char *filename);
+void print_para_error();
 int indexOf(char *src,const char *flag);
 int indexOfLast(char *src,const char *flag);
 void release(int *argc, char **argv);
-void readfile(char *filename, int *argc, char **argv);
+unsigned int readfile(char *filename, int *argc, char **argv);
 unsigned int argv_to_struct(int argc, char **argv,struct wap_t *waps);
-unsigned int file_to_struct(char *str, struct wap_t *waps);
 void rssi2dist(struct wap_t *waps);
 void dist2coordinate(struct wap_t *waps);
 
