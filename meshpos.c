@@ -74,6 +74,11 @@ unsigned int readfile(char *filename,int *argc, char **argv){
 
     //read
     pf=fopen(filename,"r");
+    if(pf == NULL){
+        printf("ERROR;\n%s:File does not exist\n", filename);
+        return 1;
+    }
+
     while(fgets(buffer,PARAMETER_SIZE - 1,pf) != NULL){
         if(flags_count >= PARAMETER_COUNT)
             return 1;
@@ -85,6 +90,7 @@ unsigned int readfile(char *filename,int *argc, char **argv){
         argv[i] = (char*)malloc(len + 1);
         for(j=index;j<indexlast;j++)
             argv[i][c++] = buffer[j];
+        argv[i][c] = '\0';
         i++;
         c=0;
 
@@ -97,8 +103,10 @@ unsigned int readfile(char *filename,int *argc, char **argv){
         argv[i] = (char*)malloc(len + 1);
         for(j=indexlast+1; j<indexlast+len+1 ;j++)
             argv[i][c++] = buffer[j];
+        argv[i][c] = '\0';
         i++;
         c=0;
+
         flags_count++;
     }
     *argc = i;
@@ -122,21 +130,25 @@ unsigned int argv_to_struct(int argc, char **argv, struct wap_t *waps){
         if(!strcmp(argv[i],HOST) && i+1 < argc){
             for(j=0;argv[i+1][j] != '\0';j++)
                 host[c++] = argv[i+1][j];
+            host[c] = '\0';
             i++;
         }else if(!strcmp(argv[i],AB) && i+1 < argc){
             for(j=0;argv[i+1][j] != '\0';j++)
                 ab[c++] = argv[i+1][j];
             ab[c] = ';';
+            ab[c+1] = '\0';
             i++;
         }else if(!strcmp(argv[i],AC) && i+1 < argc){
             for(j=0;argv[i+1][j] != '\0';j++)
                 ac[c++] = argv[i+1][j];
             ac[c] = ';';
+            ac[c+1] = '\0';
             i++;
         }else if(!strcmp(argv[i],BC) && i+1 < argc){
             for(j=0;argv[i+1][j] != '\0';j++)
                 bc[c++] = argv[i+1][j];
             bc[c] = ';';
+            bc[c+1] = '\0';
             i++;
         }else{
             return 1;
@@ -172,15 +184,18 @@ unsigned int argv_to_struct(int argc, char **argv, struct wap_t *waps){
         c=0;
         for(i+=5;data[i] != ',';i++)
             waps[j].neighbor.link->bssid[c++] = data[i];
+        waps[j].neighbor.link->bssid[c] = '\0';
 
         c=0;
         for(i+=8;data[i] != '/';i++)
             rssi_5g[c++] = data[i];
+        rssi_5g[c] = '\0';
         waps[j].neighbor.rssi_5g = atoi(rssi_5g);
 
         c=0;
         for(i+=1 ;data[i] != ';';i++)
             rssi_2g[c++] = data[i];
+        rssi_2g[c] = '\0';
         waps[j].neighbor.rssi_2g = atoi(rssi_2g);
         i++;
     }
@@ -243,13 +258,12 @@ void dist2coordinate(struct wap_t *waps){
         cosine = 1;
     else if(cosine < -1)
         cosine = -1;
+    if(cosine == 1 || cosine == -1)
+        printf("ERROR;\n5G: Triangle side out of focus!\n");
 
     alpha = acos(cosine);
     waps[2].X_5g = (float)(d02*cos(alpha)); //得C座標
     waps[2].Y_5g = (float)(d02*sin(alpha));
-
-    if(waps[2].Y_5g == 0.0)
-        printf("ERROR;\n5G: Triangle side out of focus!\n"); //三角形邊長失焦
 
     //----------------------------------
     d01 = waps[0].neighbor.distance_2g; //ab
@@ -262,13 +276,12 @@ void dist2coordinate(struct wap_t *waps){
         cosine = 1;
     else if(cosine < -1)
         cosine = -1;
+    if(cosine == 1 || cosine == -1)
+        printf("ERROR;\n2.4G: Triangle side out of focus!\n");
 
     alpha = acos(cosine);
     waps[2].X_2g = (float)(d02*cos(alpha)); //得C座標
     waps[2].Y_2g = (float)(d02*sin(alpha));
-
-    if(waps[2].Y_2g == 0.0)
-        printf("ERROR;\n2.4G: Triangle side out of focus!\n"); //三角形邊長失焦
 
     //----------------------------------
     //利用畢氏定理去補，或是直接 y 給 0.5 之類的小值
