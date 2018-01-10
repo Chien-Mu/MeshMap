@@ -19,16 +19,14 @@ struct wap_t{
     char bssid[18];
     unsigned int bssid_tag;
     unsigned int isHost;
-    float X_5g;                    //計算結果位置
-    float Y_5g;
-    float X_2g;
-    float Y_2g;
+    float X;                    //計算結果位置
+    float Y;
     struct neighbor_t{        
         struct wap_t *link;
-        int rssi_5g;
-        int rssi_2g;
-        float distance_5g;         //計算結果距離
-        float distance_2g;
+        int rssi_1;
+        int rssi_2;
+        float rssi_merge;
+        float distance;         //計算結果距離
     }neighbor;
 };
 

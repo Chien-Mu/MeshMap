@@ -56,17 +56,10 @@ int main(int argc, char *argv[])
     //output
     printf("5G;\n");
     for(i=0;i<3;i++)
-        printf("coor=%s=(%.2f,%.2f);\n", waps[i].bssid, waps[i].X_5g,waps[i].Y_5g);
+        printf("coor=%s=(%.2f,%.2f);\n", waps[i].bssid, waps[i].X,waps[i].Y);
     for(i=0;i<3;i++)
-        printf("dist=%s-%s=%.1fm=%d;\n", waps[i].bssid, waps[i].neighbor.link->bssid,
-               waps[i].neighbor.distance_5g, waps[i].neighbor.rssi_5g);
-
-    printf("2.4G;\n");
-    for(i=0;i<3;i++)
-        printf("coor=%s=(%.2f,%.2f);\n", waps[i].bssid, waps[i].X_2g,waps[i].Y_2g);
-    for(i=0;i<3;i++)
-        printf("dist=%s-%s=%.1fm=%d;\n", waps[i].bssid, waps[i].neighbor.link->bssid,
-               waps[i].neighbor.distance_2g, waps[i].neighbor.rssi_2g);
+        printf("dist=%s-%s=%.1fm=%.f;\n", waps[i].bssid, waps[i].neighbor.link->bssid,
+               waps[i].neighbor.distance, waps[i].neighbor.rssi_merge);
 
     //release
     if(isfile == 1)

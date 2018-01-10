@@ -118,7 +118,7 @@ unsigned int readfile(char *filename,int *argc, char **argv){
 unsigned int argv_to_struct(int argc, char **argv, struct wap_t *waps){
     int i=0,j=0,c=0;
     char data[120] = {'\0'};
-    char rssi_5g[5] = {'\0'}, rssi_2g[5] = {'\0'};
+    char rssi_1[5] = {'\0'}, rssi_2[5] = {'\0'};
     char host[18] = {'\0'};
     char ab[40] = {'\0'}, ac[40] = {'\0'}, bc[40] = {'\0'};
 
@@ -188,15 +188,15 @@ unsigned int argv_to_struct(int argc, char **argv, struct wap_t *waps){
 
         c=0;
         for(i+=8;data[i] != '/';i++)
-            rssi_5g[c++] = data[i];
-        rssi_5g[c] = '\0';
-        waps[j].neighbor.rssi_5g = atoi(rssi_5g);
+            rssi_1[c++] = data[i];
+        rssi_1[c] = '\0';
+        waps[j].neighbor.rssi_1 = atoi(rssi_1);
 
         c=0;
         for(i+=1 ;data[i] != ';';i++)
-            rssi_2g[c++] = data[i];
-        rssi_2g[c] = '\0';
-        waps[j].neighbor.rssi_2g = atoi(rssi_2g);
+            rssi_2[c++] = data[i];
+        rssi_2[c] = '\0';
+        waps[j].neighbor.rssi_2 = atoi(rssi_2);
         i++;
     }
 
@@ -204,27 +204,24 @@ unsigned int argv_to_struct(int argc, char **argv, struct wap_t *waps){
 }
 
 void rssi2dist(struct wap_t *waps){
+    /* 5G 與 2.4G 方程式不同 */
     float rssi;
 
-    /* 5G 與 2.4G 方程式不同 */
-    rssi = waps[0].neighbor.rssi_5g;
-    waps[0].neighbor.distance_5g = exp((rssi+32.851)/(-8.782));
+    //----------5G-----------
+    const float P0 = -33.0;
+    const float n = 1.90;
 
-    rssi = waps[1].neighbor.rssi_5g;
-    waps[1].neighbor.distance_5g = exp((rssi+32.851)/(-8.782));
+    rssi = (float)(waps[0].neighbor.rssi_1 + waps[0].neighbor.rssi_2) / 2.0;
+    waps[0].neighbor.distance = pow(10.0, (P0-rssi)/(10.0*n));
+    waps[0].neighbor.rssi_merge = rssi;
 
-    rssi = waps[2].neighbor.rssi_5g;
-    waps[2].neighbor.distance_5g = exp((rssi+32.851)/(-8.782));
+    rssi = (float)(waps[1].neighbor.rssi_1 + waps[1].neighbor.rssi_2) / 2.0;
+    waps[1].neighbor.distance = pow(10.0, (P0-rssi)/(10.0*n));
+    waps[1].neighbor.rssi_merge = rssi;
 
-    //-------------------------
-    rssi = waps[0].neighbor.rssi_2g;
-    waps[0].neighbor.distance_2g = exp((rssi+32.851)/(-8.782));
-
-    rssi = waps[1].neighbor.rssi_2g;
-    waps[1].neighbor.distance_2g = exp((rssi+32.851)/(-8.782));
-
-    rssi = waps[2].neighbor.rssi_2g;
-    waps[2].neighbor.distance_2g = exp((rssi+32.851)/(-8.782));
+    rssi = (float)(waps[2].neighbor.rssi_1 + waps[2].neighbor.rssi_2) / 2.0;
+    waps[2].neighbor.distance = pow(10.0, (P0-rssi)/(10.0*n));
+    waps[2].neighbor.rssi_merge = rssi;
 }
 
 void dist2coordinate(struct wap_t *waps){
@@ -232,25 +229,21 @@ void dist2coordinate(struct wap_t *waps){
     float alpha=0.0, cosine=0.0;
 
     //waps[0]
-    waps[0].X_5g = 0;
-    waps[0].Y_5g = 0;
-    waps[0].X_2g = 0;
-    waps[0].Y_2g = 0;
+    waps[0].X = 0;
+    waps[0].Y = 0;
 
     //waps[1]
-    waps[1].X_5g = waps[0].neighbor.distance_5g;
+    waps[1].X = waps[0].neighbor.distance;
     //waps[1].X_5g = 2;
-    waps[1].Y_5g = 0;
-    waps[1].X_2g = waps[0].neighbor.distance_2g;
-    waps[1].Y_2g = 0;
+    waps[1].Y = 0;
 
     //waps[2]
 //    d01 = 2.0; //ab
 //    d02 = 5.0; //ac
 //    d12 = 3.5; //bc
-    d01 = waps[0].neighbor.distance_5g; //ab
-    d02 = waps[2].neighbor.distance_5g; //ac
-    d12 = waps[1].neighbor.distance_5g; //bc
+    d01 = waps[0].neighbor.distance; //ab
+    d02 = waps[2].neighbor.distance; //ac
+    d12 = waps[1].neighbor.distance; //bc
     cosine = (pow(d01,2) + pow(d02,2) - pow(d12,2)) / (2*d01*d02);
 
     //長度失焦(兩邊之和 < 第三邊)
@@ -262,26 +255,8 @@ void dist2coordinate(struct wap_t *waps){
         printf("ERROR;\n5G: Triangle side out of focus!\n");
 
     alpha = acos(cosine);
-    waps[2].X_5g = (float)(d02*cos(alpha)); //得C座標
-    waps[2].Y_5g = (float)(d02*sin(alpha));
-
-    //----------------------------------
-    d01 = waps[0].neighbor.distance_2g; //ab
-    d02 = waps[2].neighbor.distance_2g; //ac
-    d12 = waps[1].neighbor.distance_2g; //bc
-    cosine = (pow(d01,2) + pow(d02,2) - pow(d12,2)) / (2*d01*d02);
-
-    //長度失焦(兩邊之和 < 第三邊)
-    if(cosine > 1)
-        cosine = 1;
-    else if(cosine < -1)
-        cosine = -1;
-    if(cosine == 1 || cosine == -1)
-        printf("ERROR;\n2.4G: Triangle side out of focus!\n");
-
-    alpha = acos(cosine);
-    waps[2].X_2g = (float)(d02*cos(alpha)); //得C座標
-    waps[2].Y_2g = (float)(d02*sin(alpha));
+    waps[2].X = (float)(d02*cos(alpha)); //得C座標
+    waps[2].Y = (float)(d02*sin(alpha));
 
     //----------------------------------
     //利用畢氏定理去補，或是直接 y 給 0.5 之類的小值
