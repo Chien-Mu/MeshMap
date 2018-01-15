@@ -14,7 +14,7 @@ char *cgi = "-host 06:00:00:00:00:00"
 int main(int argc, char *argv[])
 {
     int _argc=0;
-    unsigned int isfile=0,i=0;
+    unsigned int isfile=0,check=0,i=0;
     char **_argv = NULL;
     struct wap_t waps[3];
     waps[0] = init_wap();
@@ -31,30 +31,35 @@ int main(int argc, char *argv[])
             break;
         }
 
-    //input waps array
     if(isfile == 1){
-        if(readfile(_argv[0], &_argc, _argv)){
+        check = readfile(_argv[0], &_argc, _argv); //read file
+
+        if(check == 1){
             release(&_argc, _argv);
             print_file_error(_argv[0]);
             return 0;
+        }else if(check == 2){
+            release(&_argc, _argv);
+            return 0;
         }
+
+        //input waps array
         if(argv_to_struct(_argc, _argv, waps)){
             release(&_argc, _argv);
             print_file_error(_argv[0]);
             return 0;
         }
-    }else
-        if(argv_to_struct(argc, argv, waps)){
-            print_para_error();
-            return 0;
-        }
+    }else{
+        printf("parameter error.\n./MeshMap -in filename\n");
+        return 0;
+    }
 
     //calc
     rssi2dist(waps);
     dist2coordinate(waps);
 
     //output
-    printf("5G;\n");
+    printf("5G:\n");
     for(i=0;i<3;i++)
         printf("coor=%s=(%.2f,%.2f);\n", waps[i].bssid, waps[i].X,waps[i].Y);
     for(i=0;i<3;i++)

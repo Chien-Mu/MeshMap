@@ -13,7 +13,7 @@ struct wap_t init_wap(void){
 }
 
 void print_file_error(const char *filename){
-    printf("ERROR;\n");
+    printf("ERROR:\n");
     printf("%s:Invalid argument format.\n", filename);
     printf("File content example:\n");
     printf("-host 06:00:00:00:00:00\n"
@@ -23,7 +23,7 @@ void print_file_error(const char *filename){
 }
 
 void print_para_error(){
-    printf("ERROR;\n");
+    printf("ERROR:\n");
     printf("Invalid argument format.\n");
     printf("Argument example:\n");
     printf("./MeshMap -host 06:00:00:00:00:00"
@@ -75,8 +75,8 @@ unsigned int readfile(char *filename,int *argc, char **argv){
     //read
     pf=fopen(filename,"r");
     if(pf == NULL){
-        printf("ERROR;\n%s:File does not exist\n", filename);
-        return 1;
+        printf("ERROR:\n%s:File does not exist\n", filename);
+        return 2;
     }
 
     while(fgets(buffer,PARAMETER_SIZE - 1,pf) != NULL){
@@ -252,7 +252,7 @@ void dist2coordinate(struct wap_t *waps){
     else if(cosine < -1)
         cosine = -1;
     if(cosine == 1 || cosine == -1)
-        printf("ERROR;\n5G: Triangle side out of focus!\n");
+        printf("ERROR:\n5G: Triangle side out of focus!\n");
 
     alpha = acos(cosine);
     waps[2].X = (float)(d02*cos(alpha)); //得C座標
