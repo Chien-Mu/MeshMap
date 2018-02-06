@@ -32,7 +32,7 @@ struct wap_t{
 
 struct wap_t init_wap(void);
 void print_file_error(const char *filename);
-void print_para_error();
+void print_error();
 int indexOf(char *src,const char *flag);
 int indexOfLast(char *src,const char *flag);
 void release(int *argc, char **argv);

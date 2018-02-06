@@ -1,11 +1,11 @@
-/*
- * -host 06:00:00:00:00:00 -ab "MAC: 06:01:22:00:00:01, RSSI: -38/-42" -ac "MAC: 06:01:22:00:00:D3, RSSI: -43/-37" -bc "MAC: 06:01:22:00:00:D3, RSSI: -51/-54"
- * -in 1.txt
- */
-
 #include <stdio.h>
 #include "meshpos.h"
 
+/* test
+   -host 06:00:00:00:00:00 -ab "MAC: 06:01:22:00:00:01, RSSI: -38/-42" -ac "MAC: 06:01:22:00:00:D3, RSSI: -43/-37" -bc "MAC: 06:01:22:00:00:D3, RSSI: -51/-54"
+
+* -in 1.txt
+ */
 char *cgi = "-host 06:00:00:00:00:00"
             " -ab \"MAC: 06:01:22:00:00:01, RSSI: -38/-42\""
             " -ac \"MAC: 06:01:22:00:00:D3, RSSI: -43/-37\""
@@ -14,7 +14,9 @@ char *cgi = "-host 06:00:00:00:00:00"
 int main(int argc, char *argv[])
 {
     int _argc=0;
-    unsigned int isfile=0,i=0;
+    unsigned int isfile=0;
+    unsigned int check=0;
+    unsigned int i=0;
     char **_argv = NULL;
     struct wap_t waps[3];
     waps[0] = init_wap();
@@ -31,6 +33,17 @@ int main(int argc, char *argv[])
             break;
         }
 
+    //check parameter
+    if(!isfile){
+        for(i=0;i<(unsigned int)argc;i++)
+            if(indexOf(argv[i],HOST) != -1)
+                check = 1;
+        if(!check){
+            print_error();
+            return 0;
+        }
+    }
+
     //input waps array
     if(isfile == 1){
         if(readfile(_argv[0], &_argc, _argv)){
@@ -45,7 +58,7 @@ int main(int argc, char *argv[])
         }
     }else
         if(argv_to_struct(argc, argv, waps)){
-            print_para_error();
+            print_error();
             return 0;
         }
 

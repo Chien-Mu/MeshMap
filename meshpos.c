@@ -13,23 +13,26 @@ struct wap_t init_wap(void){
 }
 
 void print_file_error(const char *filename){
-    printf("ERROR;\n");
     printf("%s:Invalid argument format.\n", filename);
-    printf("File content example:\n");
+    print_error();
+}
+
+void print_error(){
+    printf("\nerror: invalid argument format.\n");
+    printf("\nRead file example:\n");
+    printf("./MeshMap -in filename\n");
+    printf("\nFile content example:\n");
     printf("-host 06:00:00:00:00:00\n"
            "-ab MAC: 06:01:22:00:00:01, RSSI: -38/-42\n"
            "-ac MAC: 06:01:22:00:00:D3, RSSI: -43/-37\n"
            "-bc MAC: 06:01:22:00:00:D3, RSSI: -51/-54\n");
-}
-
-void print_para_error(){
-    printf("ERROR;\n");
-    printf("Invalid argument format.\n");
-    printf("Argument example:\n");
+    printf("\nArgument example:\n");
+    printf("./MeshMap [-host, -ab -ac -bc]\n");
     printf("./MeshMap -host 06:00:00:00:00:00"
            " -ab \"MAC: 06:01:22:00:00:01, RSSI: -38/-42\""
            " -ac \"MAC: 06:01:22:00:00:D3, RSSI: -43/-37\""
            " -bc \"MAC: 06:01:22:00:00:D3, RSSI: -51/-54\"\n");
+    printf("\n\n");
 }
 
 int indexOf(char *src,const char *flag){
@@ -68,14 +71,13 @@ unsigned int readfile(char *filename,int *argc, char **argv){
     unsigned int i=1; //argv[0] save filename string
     unsigned int j=0,c=0,len=0,index=0,indexlast=0;
 
-
     //default
     *argc=0;
 
     //read
     pf=fopen(filename,"r");
     if(pf == NULL){
-        printf("ERROR;\n%s:File does not exist\n", filename);
+        printf("%s:File does not exist\n", filename);
         return 1;
     }
 
@@ -234,33 +236,24 @@ void dist2coordinate(struct wap_t *waps){
 
     //waps[1]
     waps[1].X = waps[0].neighbor.distance;
-    //waps[1].X_5g = 2;
     waps[1].Y = 0;
 
     //waps[2]
-//    d01 = 2.0; //ab
-//    d02 = 5.0; //ac
-//    d12 = 3.5; //bc
     d01 = waps[0].neighbor.distance; //ab
     d02 = waps[2].neighbor.distance; //ac
     d12 = waps[1].neighbor.distance; //bc
     cosine = (pow(d01,2) + pow(d02,2) - pow(d12,2)) / (2*d01*d02);
 
-    //長度失焦(兩邊之和 < 第三邊)
     if(cosine > 1)
         cosine = 1;
     else if(cosine < -1)
         cosine = -1;
     if(cosine == 1 || cosine == -1)
-        printf("ERROR;\n5G: Triangle side out of focus!\n");
+        printf("out of focus!\n");
 
     alpha = acos(cosine);
-    waps[2].X = (float)(d02*cos(alpha)); //得C座標
+    waps[2].X = (float)(d02*cos(alpha));
     waps[2].Y = (float)(d02*sin(alpha));
-
-    //----------------------------------
-    //利用畢氏定理去補，或是直接 y 給 0.5 之類的小值
-    //printf("(%f ,%f)\n", waps[2].X,waps[2].Y);
 }
 
 
