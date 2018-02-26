@@ -4,42 +4,40 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#define PARAMETER_LEN 6         //paramter char length
-#define PARAMETER_COUNT 4       //paramter total
-#define PARAMETER_SIZE 128      //parameter content length
-#define FLAG_MAC "MAC:"
-#define FLAG_RSSI "RSSI:"
-#define IN "-in"
-#define HOST "-host"
-#define AB "-ab"
-#define AC "-ac"
-#define BC "-bc"
 
-struct wap_t{
+typedef struct node_t {
     char bssid[18];
     unsigned int bssid_tag;
-    unsigned int isHost;
     float X;                    //計算結果位置
-    float Y;
-    struct neighbor_t{        
-        struct wap_t *link;
-        int rssi_1;
-        int rssi_2;
-        float rssi_merge;
-        float distance;         //計算結果距離
-    }neighbor;
-};
+    float Y; 
+}node_t;
 
-struct wap_t init_wap(void);
-void print_file_error(const char *filename);
-void print_para_error();
-int indexOf(char *src,const char *flag);
-int indexOfLast(char *src,const char *flag);
-void release(int *argc, char **argv);
-unsigned int readfile(char *filename, int *argc, char **argv);
-unsigned int argv_to_struct(int argc, char **argv,struct wap_t *waps);
-void rssi2dist(struct wap_t *waps);
-void dist2coordinate(struct wap_t *waps);
+typedef struct line_t {
+    unsigned int flag;
+    node_t *node1;
+    node_t *node2;
+    int rssi_1;
+    int rssi_2;
+    float rssi_merge;
+    float distance;              //計算結果距離
+    struct neighbor_t {
+        struct line_t *link;
+        unsigned int size;
+    }neighbor;
+}line_t;
+
+typedef struct triangle_t {    
+    line_t *ab; //ab (x axis)
+    line_t *ac; //ac (top-left)
+    line_t *bc; //bc (top-right)
+}triangle_t;
+
+node_t init_node(void);
+line_t init_line(void);
+triangle_t init_triangle(void);
+void testRead(node_t **node, line_t **line);
+void rssi2dist(line_t *lines, unsigned int size);
+triangle_t dist2coor(triangle_t triangle);
 
 
 #endif // MESHPOS_H
