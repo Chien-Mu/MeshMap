@@ -19,27 +19,34 @@ triangle_t init_triangle(void){
 }
 
 void testRead(node_t **node, line_t **line){
-    /* "a-b -38/-42;"
+    /* "a-b -38/-37;"
        "a-c -51/-54;"
-       "b-c -43/-37;"
+       "b-c -43/-42;"
+       "d-b -43/-42;"
+       "c-b -43/-42;"
     */
     unsigned int i;
-    unsigned int lineSize = 3, nodeSize = 3;
+    unsigned int lineSize = 5, nodeSize = 4;
     *node = (node_t *)malloc(nodeSize * sizeof(node_t));
     *line = (line_t *)malloc(lineSize * sizeof(line_t));
     for(i=0;i<nodeSize;i++)
         (*node)[i] = init_node();
-    for(i=0;i<nodeSize;i++)
+    for(i=0;i<lineSize;i++)
         (*line)[i] = init_line();
 
     strcpy((*node)[0].bssid,"a");
     strcpy((*node)[1].bssid,"b");
     strcpy((*node)[2].bssid,"c"); //(*node)[2] == node[0][2]
+    strcpy((*node)[3].bssid,"d");
+    (*node)[0].bssid_tag = 0;
+    (*node)[1].bssid_tag = 1;
+    (*node)[2].bssid_tag = 2;
+    (*node)[3].bssid_tag = 3;
 
     (*line)[0].node1 = &(*node)[0]; //&(*node)[0] == &(*node)[0][0]
     (*line)[0].node2 = &(*node)[1];
     (*line)[0].rssi_1 = -38;
-    (*line)[0].rssi_2 = -42;
+    (*line)[0].rssi_2 = -37;
     (*line)[0].distance = 5;
 
     (*line)[1].node1 = &(*node)[0];
@@ -51,10 +58,31 @@ void testRead(node_t **node, line_t **line){
     (*line)[2].node1 = &(*node)[1];
     (*line)[2].node2 = &(*node)[2];
     (*line)[2].rssi_1 = -43;
-    (*line)[2].rssi_2 = -37;
+    (*line)[2].rssi_2 = -42;
     (*line)[2].distance = 2.3;
+
+    (*line)[3].node1 = &(*node)[3];
+    (*line)[3].node2 = &(*node)[1];
+    (*line)[3].rssi_1 = -43;
+    (*line)[3].rssi_2 = -42;
+    (*line)[3].distance = 4.3;
+
+    (*line)[4].node1 = &(*node)[2];
+    (*line)[4].node2 = &(*node)[3];
+    (*line)[4].rssi_1 = -43;
+    (*line)[4].rssi_2 = -42;
+    (*line)[4].distance = 4.15;
 }
 
+void marker(triangle_t triangle){
+    triangle.ab->flag = 1;
+    triangle.ac->flag = 1;
+    triangle.bc->flag = 1;
+    triangle.ab->node1->flag = 1;
+    triangle.ab->node2->flag = 1;
+    triangle.ac->node1->flag = 1;
+    triangle.ac->node2->flag = 1;
+}
 
 void rssi2dist(line_t *lines, unsigned int size){
     /* 5G 與 2.4G 方程式不同 */
@@ -72,20 +100,20 @@ void rssi2dist(line_t *lines, unsigned int size){
     }
 }
 
-triangle_t dist2coor(triangle_t triangle){
+void dist2coor(triangle_t triangle){
     float d01=0.0, d02=0.0, d12=0.0;
     float alpha=0.0, cosine=0.0;
     node_t *a,*b,*c;
 
-    //a coor (0,0)   
+    //a coor (0,0)
     a = triangle.ab->node1;
-    a->X = 100;
-    a->Y = 0;
+    a->point.X = 0;
+    a->point.Y = 0;
 
     //b coor (ab,0)
     b = triangle.ab->node2;
-    b->X = triangle.ab->distance;
-    b->Y = 0;
+    b->point.X =  triangle.ab->distance;
+    b->point.Y = 0;
 
     //c coor calc
     /*
@@ -108,7 +136,7 @@ triangle_t dist2coor(triangle_t triangle){
 
     //警告
     //if(cosine == 1 || cosine == -1)
-        //printf("ERROR:\n5G: Triangle side out of focus!\n");
+    //printf("ERROR:\n5G: Triangle side out of focus!\n");
 
     //找出c點(與a 不一樣的就是c點)
     if(triangle.ac->node1 == a)
@@ -117,24 +145,54 @@ triangle_t dist2coor(triangle_t triangle){
         c = triangle.ac->node1;
 
     //set
-    c->X = (float)(d02*cos(alpha));
-    c->Y = (float)(d02*sin(alpha));
+    c->point.X = (float)(d02*cos(alpha));
+    c->point.Y = (float)(d02*sin(alpha));
+
+    return;
 
     printf("x=%f\n",(float)(d02*cos(alpha)));
     printf("y=%f\n",(float)(d02*sin(alpha)));
-    return triangle;
-
-
-
     //----------------------------------
     //利用畢氏定理去補，或是直接 y 給 0.5 之類的小值
     //printf("(%f ,%f)\n", waps[2].X,waps[2].Y);
 }
 
+float dir_angle (point_t a,point_t b){
+    /* 方向角，a :center */
+    float angle = atan( fabs(b.X-a.X) / fabs(b.Y-a.Y) ) * (180.0/M_PI);
+    if(b.X > a.X && b.Y < a.Y)
+        angle = 180.0 - angle;
+    else if(b.X < a.X && b.Y < a.Y)
+        angle += 180.0;
+    else if(b.X < a.X && b.Y > a.Y)
+        angle = 360.0 - angle;
+    return angle;
+}
 
+point_t rotate_coor(point_t p, float angle, point_t center){
+    /* center 為旋轉圓心點，預設應為 0,0 */
+    point_t newP;
 
+    angle = (angle/180.0)*M_PI;
+    p.X = p.X - center.X;
+    p.Y = p.Y - center.Y;
+    newP.X = (p.X * cos(angle)) - (p.Y * sin(angle));
+    newP.Y = (p.X * sin(angle)) + (p.Y * cos(angle));
+    newP.X = newP.X + center.X;
+    newP.Y = newP.Y + center.Y;
 
+    return newP;
+}
 
+float corner_angle(point_t A, point_t B, point_t C){
+    //角ABC 的夾角角度(三角形夾角不會大於 180度)
+    float a = sqrt(pow(B.X-A.X,2) + pow(B.Y-A.Y,2));
+    float b = sqrt(pow(C.X-B.X,2) + pow(C.Y-B.Y,2));
+    float c = sqrt(pow(C.X-A.X,2) + pow(C.Y-A.Y,2));
+    //COSX=(a^2+b^2-c^2)/(2ab)
+    float angle = (pow(a,2) + pow(b,2) - pow(c,2)) / (2*a*b);
+    return acos(angle) * (180.0/M_PI);
+}
 
 
 
