@@ -194,6 +194,80 @@ float corner_angle(point_t A, point_t B, point_t C){
     return acos(angle) * (180.0/M_PI);
 }
 
+void linkSide(line_t *workline, line_t *line1, line_t *line2){
+    /* save clone 用 */
+    line_t ab,ac,bc;
+    node_t a,b,c;
+    triangle_t t_clone; // clone triangle
+
+    /* find "d" 用  (d:三角形非連接邊的 那點) */
+    line_t *fixedMarkerLine = NULL, *cloneMarkerLine = NULL;
+    node_t *d = NULL;
+
+    /* 計算連接邊 後的 clone triangle 座標 */
+    point_t D;
+
+
+    //相對應的line若有一組有已勾(連邊)
+    if(line1->flag ^ line2->flag){
+
+        //copy and 整理(t_clone 整理後 邊與邊可能會對調，所以判斷方式不能依原本的方式)
+        // 如果沒有 copy, dist2coor() 計算會直接改掉原本的 bc 值
+        ab = *workline; //by value
+        ac = *line1;
+        bc = *line2;
+        a = *ab.node1; //by value
+        b = *ab.node2;
+        //搜尋c，有一個比對一樣就不會是c
+        if(ab.node1->bssid_tag == ac.node1->bssid_tag || ab.node2->bssid_tag == ac.node1->bssid_tag)
+            c = *ac.node2;
+        else
+            c = *ac.node1;
+        ab.node1 = &a;
+        ab.node2 = &b;
+        ac.node1 = &a;
+        ac.node2 = &c;
+        bc.node1 = &b;
+        bc.node2 = &c;
+
+        //calc
+        t_clone.ab = &ab;
+        t_clone.ac = &ac;
+        t_clone.bc = &bc;
+        dist2coor(t_clone);
+
+        //find marker line
+        if(line1->flag)
+            fixedMarkerLine = line1;
+        else
+            fixedMarkerLine = line2;
+        //因整理後邊可能會對調，所以尋找方式是: dist與marker line(fixed) 一樣的 line才是marker line(clone)
+        if(fixedMarkerLine->distance == ac.distance)
+            cloneMarkerLine = &ac;
+        else if(fixedMarkerLine->distance == bc.distance)
+            cloneMarkerLine = &bc;
+        else if(fixedMarkerLine->distance == ab.distance)
+            cloneMarkerLine = &ab;
+
+        //find  clone triangle 的 "d"
+        if(a.bssid_tag != cloneMarkerLine->node1->bssid_tag && a.bssid_tag != cloneMarkerLine->node2->bssid_tag)
+            d = &a;
+        else if (b.bssid_tag != cloneMarkerLine->node1->bssid_tag && b.bssid_tag != cloneMarkerLine->node2->bssid_tag)
+            d = &b;
+        else if (c.bssid_tag != cloneMarkerLine->node1->bssid_tag && c.bssid_tag != cloneMarkerLine->node2->bssid_tag)
+            d = &c;
+
+        //Calculate the coordinates of the linked side clone triangle
+        D.X = d->point.X + fixedMarkerLine->node1->point.X;
+        D.Y = d->point.Y + fixedMarkerLine->node1->point.Y;
+        //旋轉中心都固定定義 node1 (如果 fixed 與 clone 的 angle 定的旋轉中心不一，頂多呈現鏡像，後面會再判斷所以還好)
+        float fixedMarkerAngle = dir_angle(fixedMarkerLine->node1->point, fixedMarkerLine->node2->point);
+        float cloneMarkerAngle = dir_angle(cloneMarkerLine->node1->point,cloneMarkerLine->node2->point);
+        float rotateAngle = cloneMarkerAngle - fixedMarkerAngle; //因 負為順時鐘，所以一定要 clone - fixed (動 - 固定)
+        D = rotate_coor(D, rotateAngle, fixedMarkerLine->node1->point); //B-C 座標原本就要沿用 fixed(因為連接邊)，所以計算出 D 即可
+    }
+}
+
 
 
 

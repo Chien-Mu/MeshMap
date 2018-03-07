@@ -64,5 +64,6 @@ void dist2coor(triangle_t triangle);
 float dir_angle (point_t a,point_t b);
 point_t rotate_coor(point_t p, float angle, point_t center);
 float corner_angle(point_t A, point_t B, point_t C);
+void linkSide(line_t *workline, line_t *line1, line_t *line2);
 
 #endif // MESHPOS_H

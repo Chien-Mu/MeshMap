@@ -74,73 +74,12 @@ int main(int argc, char *argv[])
                             line_t *line1,*line2;
                             line1 = &line[associate_line_index[ii]];
                             line2 = &line[associate_line_index[j]];
+                            linkSide(&line[i], line1, line2);
                             //檢查找到的兩個line是否有已勾
 //                            if(t.ac->flag && t.bc->flag){
 //                                t.ab->flag = 1;  //如果都有勾則直接將 ab 打勾即可，因為 b、c都已經有座標
 //                                break;
 //                            }
-
-                            //相對應的line若有一組有已勾(連邊)
-                            if(line1->flag ^ line2->flag){
-                                //copy and 整理
-                                line_t ab,ac,bc;
-                                node_t a,b,c;
-                                ab = line[i]; //by value
-                                ac = *line1;
-                                bc = *line2;
-                                a = *ab.node1; //by value
-                                b = *ab.node2;
-                                //搜尋c，有一個比對一樣就不會是c
-                                if(ab.node1->bssid_tag == ac.node1->bssid_tag || ab.node2->bssid_tag == ac.node1->bssid_tag)
-                                    c = *ac.node2;
-                                else
-                                    c = *ac.node1;
-                                ab.node1 = &a;
-                                ab.node2 = &b;
-                                ac.node1 = &a;
-                                ac.node2 = &c;
-                                bc.node1 = &b;
-                                bc.node2 = &c;
-
-                                //calc
-                                triangle_t t;
-                                t.ab = &ab;
-                                t.ac = &ac;
-                                t.bc = &bc;
-                                dist2coor(t);
-
-                                //find marker line
-                                line_t *fixedLine,*moveLine;
-                                node_t *d;
-                                if(line1->node1->flag && line->node2->flag)
-                                    fixedLine = line1;
-                                else
-                                    fixedLine = line2;
-                                //dist與marker line(fixed) 一樣的 line才是marker line(move)
-                                if(fixedLine->distance == ac.distance)
-                                    moveLine = &ac;
-                                else if(fixedLine->distance == bc.distance)
-                                    moveLine = &bc;
-                                else if(fixedLine->distance == ab.distance)
-                                    moveLine = &ab;
-
-                                //find "d"
-                                if(a.bssid_tag != moveLine->node1->bssid_tag && a.bssid_tag != moveLine->node2->bssid_tag)
-                                    d = &a;
-                                else if (b.bssid_tag != moveLine->node1->bssid_tag && b.bssid_tag != moveLine->node2->bssid_tag)
-                                    d = &b;
-                                else if (c.bssid_tag != moveLine->node1->bssid_tag && c.bssid_tag != moveLine->node2->bssid_tag)
-                                    d = &c;
-
-                                //calc dir
-                                point_t D;
-                                D.X = d->point.X + fixedLine->node1->point.X;
-                                D.Y = d->point.Y + fixedLine->node1->point.Y;
-                                float fixedAngle = dir_angle(fixedLine->node1->point, fixedLine->node2->point);
-                                float linkAngle = dir_angle(moveLine->node1->point,moveLine->node2->point);
-                                float rotateAngle = linkAngle - fixedAngle;
-                                D = rotate_coor(D, rotateAngle, fixedLine->node1->point);
-                            }
                         }
                     }
                 }
