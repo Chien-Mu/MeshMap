@@ -38,35 +38,40 @@ void testRead(node_t **node, line_t **line){
     strcpy((*node)[1].bssid,"b");
     strcpy((*node)[2].bssid,"c"); //(*node)[2] == node[0][2]
     strcpy((*node)[3].bssid,"d");
-    (*node)[0].bssid_tag = 0;
-    (*node)[1].bssid_tag = 1;
-    (*node)[2].bssid_tag = 2;
-    (*node)[3].bssid_tag = 3;
+    (*node)[0].index = 0;
+    (*node)[1].index = 1;
+    (*node)[2].index = 2;
+    (*node)[3].index = 3;
 
+    (*line)[0].index = 0;
     (*line)[0].node1 = &(*node)[0]; //&(*node)[0] == &(*node)[0][0]
     (*line)[0].node2 = &(*node)[1];
     (*line)[0].rssi_1 = -38;
     (*line)[0].rssi_2 = -37;
     (*line)[0].distance = 5;
 
+    (*line)[1].index = 1;
     (*line)[1].node1 = &(*node)[0];
     (*line)[1].node2 = &(*node)[2];
     (*line)[1].rssi_1 = -51;
     (*line)[1].rssi_2 = -54;
     (*line)[1].distance = 4.53;
 
+    (*line)[2].index = 2;
     (*line)[2].node1 = &(*node)[1];
     (*line)[2].node2 = &(*node)[2];
     (*line)[2].rssi_1 = -43;
     (*line)[2].rssi_2 = -42;
     (*line)[2].distance = 2.3;
 
+    (*line)[3].index = 3;
     (*line)[3].node1 = &(*node)[3];
     (*line)[3].node2 = &(*node)[1];
     (*line)[3].rssi_1 = -43;
     (*line)[3].rssi_2 = -42;
     (*line)[3].distance = 4.3;
 
+    (*line)[4].index = 4;
     (*line)[4].node1 = &(*node)[2];
     (*line)[4].node2 = &(*node)[3];
     (*line)[4].rssi_1 = -43;
@@ -157,6 +162,10 @@ void dist2coor(triangle_t triangle){
     //printf("(%f ,%f)\n", waps[2].X,waps[2].Y);
 }
 
+float dist(point_t p1, point_t p2){
+    return sqrt(pow(p2.X - p1.X,2) + pow(p2.Y - p1.Y,2));
+}
+
 float dir_angle (point_t a,point_t b){
     /* 方向角，a :center */
     float angle = atan( fabs(b.X-a.X) / fabs(b.Y-a.Y) ) * (180.0/M_PI);
@@ -170,7 +179,8 @@ float dir_angle (point_t a,point_t b){
 }
 
 point_t rotate_coor(point_t p, float angle, point_t center){
-    /* center 為旋轉圓心點，預設應為 0,0 */
+    /* center 為旋轉圓心點，預設應為 0,0
+        p 為旋轉的點 */
     point_t newP;
 
     angle = (angle/180.0)*M_PI;
@@ -194,7 +204,28 @@ float corner_angle(point_t A, point_t B, point_t C){
     return acos(angle) * (180.0/M_PI);
 }
 
-void linkSide(line_t *workline, line_t *line1, line_t *line2){
+point_t mirror_coor(point_t A, point_t B, point_t C){
+    /* A(x,y) 為要顛倒的點 */
+    point_t p1,p2;
+    float angle = corner_angle(A, B, C);
+    float ch1,ch2,check_angle = angle;
+    angle = 360 - (angle * 2);
+
+    //一個順時鐘，一個逆時鐘，其中一個為答案
+    p1 = rotate_coor(A, angle, B);
+    angle = 0 - angle;
+    p2 = rotate_coor(A, angle, B);
+
+    //找出對的
+    ch1 = corner_angle(p1,B,C);
+    ch2 = corner_angle(p2,B,C);
+    if(fabsf(check_angle - ch1) < 3) //怕會有計算誤差，所以不用"等於"直接比較
+        return p1;
+    else
+        return p2;
+}
+
+unsigned int getLinkSide_D(line_t *workline, line_t *line1, line_t *line2, point_t *res, point_t *res_mirror, unsigned int *res_index){
     /* save clone 用 */
     line_t ab,ac,bc;
     node_t a,b,c;
@@ -202,6 +233,7 @@ void linkSide(line_t *workline, line_t *line1, line_t *line2){
 
     /* find "d" 用  (d:三角形非連接邊的 那點) */
     line_t *fixedMarkerLine = NULL, *cloneMarkerLine = NULL;
+    line_t *fixedNonMarkerLine = NULL;
     node_t *d = NULL;
 
     /* 計算連接邊 後的 clone triangle 座標 */
@@ -219,7 +251,7 @@ void linkSide(line_t *workline, line_t *line1, line_t *line2){
         a = *ab.node1; //by value
         b = *ab.node2;
         //搜尋c，有一個比對一樣就不會是c
-        if(ab.node1->bssid_tag == ac.node1->bssid_tag || ab.node2->bssid_tag == ac.node1->bssid_tag)
+        if(ab.node1->index == ac.node1->index || ab.node2->index == ac.node1->index)
             c = *ac.node2;
         else
             c = *ac.node1;
@@ -237,11 +269,15 @@ void linkSide(line_t *workline, line_t *line1, line_t *line2){
         dist2coor(t_clone);
 
         //find marker line
-        if(line1->flag)
+        if(line1->flag){
             fixedMarkerLine = line1;
-        else
+            fixedNonMarkerLine = line2;
+        }else{
             fixedMarkerLine = line2;
+            fixedNonMarkerLine = line1;
+        }
         //因整理後邊可能會對調，所以尋找方式是: dist與marker line(fixed) 一樣的 line才是marker line(clone)
+        //不能以 line flag or 兩個 node flag 判斷
         if(fixedMarkerLine->distance == ac.distance)
             cloneMarkerLine = &ac;
         else if(fixedMarkerLine->distance == bc.distance)
@@ -250,14 +286,14 @@ void linkSide(line_t *workline, line_t *line1, line_t *line2){
             cloneMarkerLine = &ab;
 
         //find  clone triangle 的 "d"
-        if(a.bssid_tag != cloneMarkerLine->node1->bssid_tag && a.bssid_tag != cloneMarkerLine->node2->bssid_tag)
+        if(a.index != cloneMarkerLine->node1->index && a.index != cloneMarkerLine->node2->index)
             d = &a;
-        else if (b.bssid_tag != cloneMarkerLine->node1->bssid_tag && b.bssid_tag != cloneMarkerLine->node2->bssid_tag)
+        else if (b.index != cloneMarkerLine->node1->index && b.index != cloneMarkerLine->node2->index)
             d = &b;
-        else if (c.bssid_tag != cloneMarkerLine->node1->bssid_tag && c.bssid_tag != cloneMarkerLine->node2->bssid_tag)
+        else if (c.index != cloneMarkerLine->node1->index && c.index != cloneMarkerLine->node2->index)
             d = &c;
 
-        //Calculate the coordinates of the linked side clone triangle
+        //Calculate the "D" coordinates of the linked side clone triangle
         D.X = d->point.X + fixedMarkerLine->node1->point.X;
         D.Y = d->point.Y + fixedMarkerLine->node1->point.Y;
         //旋轉中心都固定定義 node1 (如果 fixed 與 clone 的 angle 定的旋轉中心不一，頂多呈現鏡像，後面會再判斷所以還好)
@@ -265,7 +301,71 @@ void linkSide(line_t *workline, line_t *line1, line_t *line2){
         float cloneMarkerAngle = dir_angle(cloneMarkerLine->node1->point,cloneMarkerLine->node2->point);
         float rotateAngle = cloneMarkerAngle - fixedMarkerAngle; //因 負為順時鐘，所以一定要 clone - fixed (動 - 固定)
         D = rotate_coor(D, rotateAngle, fixedMarkerLine->node1->point); //B-C 座標原本就要沿用 fixed(因為連接邊)，所以計算出 D 即可
+        *res = D;
+
+        //Calculate mirror D
+        *res_mirror = mirror_coor(D, fixedMarkerLine->node1->point, fixedMarkerLine->node2->point);
+
+        //find fixed "D"
+        if(fixedNonMarkerLine->node1->flag)
+            *res_index = fixedNonMarkerLine->node2->index;
+        else
+            *res_index = fixedNonMarkerLine->node1->index;
+
+        return 1;
+    }else{
+        return 0;
     }
+}
+
+unsigned int  getAssLine(line_t *src, unsigned int srcSize, unsigned int targetIndex, line_t **desLine, node_t **desNode, unsigned int *desSize){
+    unsigned int i = 0, count = 0;
+
+    for(i = 0;i<srcSize;i++){
+
+        //pass 比較方
+        if(i == targetIndex)
+            continue;
+
+        if(!strcmp(src[i].node1->bssid, src[targetIndex].node1->bssid)){
+            desLine[count] = &src[i];
+            desNode[count++] = src[i].node2;
+        }else if(!strcmp(src[i].node2->bssid, src[targetIndex].node1->bssid)){
+            desLine[count] = &src[i];
+            desNode[count++] = src[i].node1;
+        }
+
+        if(!strcmp(src[i].node1->bssid, src[targetIndex].node2->bssid)){
+            desLine[count] = &src[i];
+            desNode[count++] = src[i].node2;
+        }else if(!strcmp(src[i].node2->bssid, src[targetIndex].node2->bssid)){
+            desLine[count] = &src[i];
+            desNode[count++] = src[i].node1;
+        }
+    }
+    *desSize = count;
+
+    if(count > 0)
+        return 1;
+    else
+        return 0;
+}
+
+unsigned int getCorrLine(node_t **assNode, unsigned int assSize, unsigned int *index1, unsigned int *index2){
+    unsigned int i = 0, j = 0;
+    unsigned int isFind = 0;
+
+    for(i = 0;i < assSize;i++)
+        for(j=i+1;j<assSize;j++){
+            if(assNode[i]->index == assNode[j]->index){
+                *index1 = i;
+                *index2 = j;
+                isFind = 1;
+                break;
+            }
+        }
+
+    return isFind;
 }
 
 

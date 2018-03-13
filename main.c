@@ -7,19 +7,20 @@ char *cgi = "a-b -38/-42;"
 
 int main(int argc, char *argv[])
 {
-    unsigned int i,ii,j,m;
-    unsigned int isAllMarker,isMarker;
+    unsigned int i,m;
+    unsigned int isAllMarker;
     node_t *node = NULL;
     line_t *line = NULL;
     unsigned int lineSize = 5;
     unsigned int associateSize = 0;
-    unsigned int *associate_line_index = (unsigned int *)malloc(lineSize * sizeof(unsigned int));
+    line_t **associate_line = NULL;
+    associate_line = (line_t **)malloc(lineSize * sizeof(line_t *)); //儲存 *line_t 的陣列
     node_t **associate_node = NULL;
     associate_node = (node_t **)malloc(lineSize * sizeof(node_t *)); //儲存 *node_t 的陣列
     triangle_t triangle;
 
     //alloc
-    testRead(&node,&line);    
+    testRead(&node,&line);
 
     //一開始
     triangle = init_triangle();
@@ -29,60 +30,64 @@ int main(int argc, char *argv[])
     dist2coor(triangle);
     marker(triangle);
 
-    associate_node[0] = line[0].node1;
-    associate_node[1] = line[0].node2;
-    associate_node[2] = line[1].node1;
-    associate_node[3] = line[1].node2;
-    associate_node[4] = line[2].node1;
+    unsigned int corrIndex1 = 0, corrIndex2 = 0, D_index = 0;
+    line_t *corrLine1,*corrLine2, *linkSideLine;
+    point_t D, mirror_D;
 
     i=3;
-    while(1){       
+    while(1){
         if(!line[i].flag) //找尋沒 marker 的 line
             if(line[i].node1->flag ^ line[i].node2->flag){  //在沒 marker 的 line 中，找尋至少有其中一個 node 有 marker 的 line
-                //找尋與 node1,node2 有關聯的 lines,nodes
-                m = 0;
-                for(j=0;j<lineSize;j++){
+                if(getAssLine(line, lineSize, i, associate_line, associate_node, &associateSize)){ //找尋與 node1,node2 有關聯的 lines,nodes
+                    if(getCorrLine(associate_node, associateSize, &corrIndex1, &corrIndex2)){ //從關聯 node 中，再找出相對應的兩個 line
+                        //printf("%f - %f\n", associate_line[corrIndex1]->distance , associate_line[corrIndex2]->distance);
+                        corrLine1 = associate_line[corrIndex1];
+                        corrLine2 = associate_line[corrIndex2];
 
-                    //pass 比較方
-                    if(j == i)
-                        continue;
+                        //如果有連接邊(link side)
+                        if(getLinkSide_D(&line[i], corrLine1, corrLine2, &D, &mirror_D, &D_index)){
+                            //find "link side(B-C)" calc mirror coor
+                            if(corrLine1->flag)
+                                linkSideLine = corrLine1;
+                            else
+                                linkSideLine = corrLine2;
 
-                    if(!strcmp(line[j].node1->bssid,line[i].node1->bssid)){
-                        associate_line_index[m] = j;
-                        associate_node[m++] = line[j].node2;
-                    }else if(!strcmp(line[j].node2->bssid,line[i].node1->bssid)){
-                        associate_line_index[m] = j;
-                        associate_node[m++] = line[j].node1;
-                    }
+                            //find "A"
+                            getAssLine(line, lineSize, linkSideLine->index, associate_line, associate_node ,&associateSize);
+                            for(m=0;m<associateSize;m++)
+                                associate_node[m]->tag = 0;
+                            for(m=0;m<associateSize;m++)
+                                if(associate_node[m]->index != D_index)
+                                    associate_node[m]->tag++;
 
-                    if(!strcmp(line[j].node1->bssid,line[i].node2->bssid)){
-                        associate_line_index[m] = j;
-                        associate_node[m++] = line[j].node2;
-                    }else if(!strcmp(line[j].node2->bssid,line[i].node2->bssid)){
-                        associate_line_index[m] = j;
-                        associate_node[m++] = line[j].node1;
-                    }
-                }
-                associateSize = m;
-
-                //從關聯 node 中，再找出相對應的兩個 line
-                for(ii=0;ii<associateSize;ii++){
-                    for(j=ii+1;j<associateSize;j++){
-                        printf("%d-%d ",ii,j);
-                        printf("%s-%s\n",associate_node[ii], associate_node[j]->bssid);
-                        if(associate_node[ii]->bssid_tag == associate_node[j]->bssid_tag){
-                            line_t *line1,*line2;
-                            line1 = &line[associate_line_index[ii]];
-                            line2 = &line[associate_line_index[j]];
-                            linkSide(&line[i], line1, line2);
-                            //檢查找到的兩個line是否有已勾
-//                            if(t.ac->flag && t.bc->flag){
-//                                t.ab->flag = 1;  //如果都有勾則直接將 ab 打勾即可，因為 b、c都已經有座標
-//                                break;
-//                            }
+                            //find max distance
+                            for(m=0;m<associateSize;m++){
+                                if(associate_node[m]->tag >= 2){ //tag >= 2 就是 A
+                                    node_t *A = associate_node[m];
+                                    if(dist(D , A->point) > dist(mirror_D, A->point))
+                                        node[D_index].point = D;
+                                    else
+                                        node[D_index].point = mirror_D;
+                                    break;
+                                }
+                                //printf("%s %d\n", associate_node[m]->bssid, associate_node[m]->tag);
+                            }
                         }
+
+
+                        //marker two side line
+                        corrLine1->flag = 1;
+                        corrLine1->node1->flag = 1;
+                        corrLine1->node2->flag = 1;
+                        corrLine2->flag = 1;
+                        corrLine2->node1->flag = 1;
+                        corrLine2->node2->flag = 1;
                     }
                 }
+                //marker work line
+                line[i].flag = 1;
+                line[i].node1->flag = 1;
+                line[i].node2->flag = 1;
             }
 
 
@@ -105,7 +110,7 @@ int main(int argc, char *argv[])
     //output
     for(i=0;i<3;i++)
         printf("%s(%.2f,%.2f)\n", node[i].bssid, node[i].point.X, node[i].point.Y);
-    free(associate_line_index);
+    free(associate_line);
     free(associate_node);
     free(line);
     free(node);
