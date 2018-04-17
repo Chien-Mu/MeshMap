@@ -154,6 +154,23 @@ float dist(point_t p1, point_t p2){
     return sqrt(pow(p2.X - p1.X,2) + pow(p2.Y - p1.Y,2));
 }
 
+void triangle_calc(data_t *data, unsigned int size, node_t **node, line_t **line){
+    triangle_t triangle;
+
+    //allocate
+    if(!assign_data(data, size, &(*node), &(*line)))
+        return;
+
+    //按順序定義 abc
+    triangle = init_triangle();
+    triangle.ab = &(*line)[0];
+    triangle.ac = &(*line)[1];
+    triangle.bc = &(*line)[2];
+
+    //calc
+    rssi2dist(*line, size);
+    dist2coor(triangle);
+}
 
 
 

@@ -5,11 +5,10 @@ int main(int argc, char *argv[])
 {
     node_t *node = 0;
     line_t *line = 0;
-    triangle_t triangle;
     const unsigned int size = 3;
+    data_t data[3];
 
     //test data
-    data_t data[3];
     strcpy(data[0].bssid1,"aaa");
     strcpy(data[0].bssid2,"bbb");
     data[0].rssi1 = -38;
@@ -22,27 +21,20 @@ int main(int argc, char *argv[])
     strcpy(data[2].bssid2,"bbb");
     data[2].rssi1 = -34;
     data[2].rssi2 = -33;
-    assign_data(data, size, &node, &line);
 
-    //按順序定義 abc
-    triangle = init_triangle();
-    triangle.ab = &line[0];
-    triangle.ac = &line[1];
-    triangle.bc = &line[2];
+    //position calc
+    triangle_calc(data, size, &node, &line);
 
-    //calc
-    rssi2dist(line, size);
-    dist2coor(triangle);
-
-    //result
+    //resul
     for(unsigned i=0; i<size; i++)
-        printf("%s=(%f,%f)\n", node[i].bssid, node[i].point.X, node[i].point.Y);
+        printf("%s = (%f,%f)\n", node[i].bssid, node[i].point.X, node[i].point.Y);
+    for(unsigned i=0; i<size; i++)
+        printf("%s:%s, distance = %f, RSSI = %f\n", line[i].node1->bssid, line[i].node2->bssid, line[i].distance, line[i].rssi_merge);
 
     //release
     if(node)
         free(node);
     if(line)
         free(line);
-
     return 0;
 }

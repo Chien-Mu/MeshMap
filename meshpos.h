@@ -48,5 +48,6 @@ triangle_t init_triangle(void);
 unsigned int assign_data(data_t *data, unsigned int size, node_t **node, line_t **line);
 void rssi2dist(line_t *lines, unsigned int size);
 void dist2coor(triangle_t triangle);
+void triangle_calc(data_t *data, unsigned int size, node_t **node, line_t **line);
 
 #endif // MESHPOS_H
