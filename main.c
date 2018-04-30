@@ -1,12 +1,42 @@
 #include <stdio.h>
+#include <unistd.h>
 #include "meshpos.h"
+
+void readin(FILE *in, char **result);
 
 int main(int argc, char *argv[])
 {
+    FILE *file;
+    char *config = "";
+    pid_t pid;
     node_t *node = 0;
     line_t *line = 0;
     const unsigned int size = 3;
-    data_t data[3];
+    data_t data[3];    
+
+    //read file
+    if( (file = fopen("config", "r")) == NULL ){
+        printf("error: cat't open config file\n");
+        return 0;
+    }else{
+        readin(file, &config);
+        printf("%s\n", config);
+        return 0;
+    }
+
+    //daemon
+    pid = fork();
+    switch(pid){
+    case -1:
+        printf("error: pid = -1\n");
+        return 0;
+    case 0:
+        //child
+        break;
+    default:
+        //parent
+        return 0;
+    }
 
     //test data
     strcpy(data[0].bssid1,"aaa");
@@ -36,5 +66,13 @@ int main(int argc, char *argv[])
         free(node);
     if(line)
         free(line);
+    fclose(file);
+    free(config);
     return 0;
+}
+
+void readin(FILE *in, char **result) {
+    char tmp[80];
+    while( fgets( tmp, 80, in)!=NULL )
+        asprintf(&(*result), "%s%s", *result, tmp);
 }

@@ -56,6 +56,7 @@ unsigned int assign_data(data_t *data, unsigned int size, node_t **node, line_t 
         (*line)[i] = init_line();
     }
 
+    //insert
     for(i=0; i<size; i++){
         //node
         if(!node_contain(*node, size, data[i].bssid1)){
