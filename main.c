@@ -4,6 +4,7 @@
 #include <math.h>
 #include "meshpos.h"
 
+void daemon_init();
 unsigned isExecute();   //check time
 time_t default_time;
 time_t execute_time_previous;
@@ -22,10 +23,7 @@ const struct regular regular_table[] = {
 
 
 int main(int argc, char *argv[])
-{
-    //daemom
-    pid_t pid;
-
+{    
     //cycle
     default_time = time(NULL);
     execute_time_previous = default_time;
@@ -36,20 +34,7 @@ int main(int argc, char *argv[])
     const unsigned int size = 3;
     data_t data[3];      
 
-
-    //daemon
-    pid = fork();
-    switch(pid){
-    case -1:
-        printf("error: pid = -1\n");
-        return 0;
-    case 0:
-        //child
-        break;
-    default:
-        //parent
-        return 0;
-    }
+    daemon_init();
 
     while(1){
         sleep(1); //cycle delay
@@ -90,6 +75,13 @@ int main(int argc, char *argv[])
     }
 
     return 0;
+}
+
+void daemon_init(){
+    pid_t pid;
+
+    if((pid = fork()) != 0)
+        exit(0);
 }
 
 unsigned isExecute(){
