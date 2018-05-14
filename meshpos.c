@@ -23,62 +23,67 @@ triangle_t init_triangle(void){
     return d;
 }
 
-unsigned int node_contain(node_t *node, unsigned int size, char *s){
+unsigned int is_nodes_contain(node_t *nodes, unsigned int size, char *bssid){
+    /* 判斷字串(bssid) 是否存在 node array */
     unsigned int i;
     for(i=0; i<size; i++)
-        if(!strcmp(s, node[i].bssid))
+        if(!strcmp(bssid, nodes[i].bssid))
             return 1;
     return 0; //沒找到
 }
 
-int node_findIndex(node_t *node, unsigned int size, char *s){
-    /* 以字串(bssid)找出 node */
+int get_node_index(node_t *nodes, unsigned int size, char *bssid){
+    /* 以字串(bssid)找出 node array index */
     unsigned int i;
     for(i=0; i<size; i++)
-        if(!strcmp(s, node[i].bssid))
+        if(!strcmp(bssid, nodes[i].bssid))
             return i;
     return -1; //沒找到
 }
 
-unsigned int assign_data(data_t *data, unsigned int size, node_t **node, line_t **line){
+unsigned int assign_data(data_t *data, unsigned int size, node_t **nodes, line_t **lines){
     unsigned int i;
-    unsigned int node_c = 0;
+    unsigned int node_count = 0;
 
     //check
     if(size < 3)
         return 0; //fail
 
     //alloc memory
-    *node = (node_t*)malloc(size*sizeof(node_t));
-    *line = (line_t*)malloc(size*sizeof(line_t));
+    *nodes = (node_t*)malloc(size*sizeof(node_t));
+    *lines = (line_t*)malloc(size*sizeof(line_t));
     for(i=0; i<size; i++){
-        (*node)[i] = init_node();
-        (*line)[i] = init_line();
+        (*nodes)[i] = init_node();
+        (*lines)[i] = init_line();
     }
 
     //insert
     for(i=0; i<size; i++){
         //node
-        if(!node_contain(*node, size, data[i].bssid1)){
-            strcpy((*node)[node_c].bssid, data[i].bssid1);
-            (*node)[node_c].index = node_c;
-            node_c++;
+        if(!is_nodes_contain(*nodes, size, data[i].bssid1)){
+            strcpy((*nodes)[node_count].bssid, data[i].bssid1);
+            (*nodes)[node_count].index = node_count;
+            node_count++;
         }
-        if(!node_contain(*node, size, data[i].bssid2)){
-            strcpy((*node)[node_c].bssid, data[i].bssid2);
-            (*node)[node_c].index = node_c;
-            node_c++;
+        if(!is_nodes_contain(*nodes, size, data[i].bssid2)){
+            strcpy((*nodes)[node_count].bssid, data[i].bssid2);
+            (*nodes)[node_count].index = node_count;
+            node_count++;
         }
 
         //line
-        (*line)[i].index = i;
-        (*line)[i].node1 = &(*node)[node_findIndex(*node, size, data[i].bssid1)];
-        (*line)[i].node2 = &(*node)[node_findIndex(*node, size, data[i].bssid2)];
-        (*line)[i].rssi_1 = data[i].rssi1;
-        (*line)[i].rssi_2 = data[i].rssi2;
+        (*lines)[i].index = i;
+        (*lines)[i].node1 = &(*nodes)[get_node_index(*nodes, size, data[i].bssid1)];
+        (*lines)[i].node2 = &(*nodes)[get_node_index(*nodes, size, data[i].bssid2)];
+        (*lines)[i].rssi_1 = data[i].rssi1;
+        (*lines)[i].rssi_2 = data[i].rssi2;
     }
 
     return 1; //success
+}
+
+float dist(point_t p1, point_t p2){
+    return sqrt(pow(p2.X - p1.X,2) + pow(p2.Y - p1.Y,2));
 }
 
 void rssi2dist(line_t *lines, unsigned int size){
@@ -149,10 +154,6 @@ void dist2coor(triangle_t triangle){
     //----------------------------------
     //利用畢氏定理去補，或是直接 y 給 0.5 之類的小值
     //printf("(%f ,%f)\n", waps[2].X,waps[2].Y);
-}
-
-float dist(point_t p1, point_t p2){
-    return sqrt(pow(p2.X - p1.X,2) + pow(p2.Y - p1.Y,2));
 }
 
 void triangle_calc(data_t *data, unsigned int size, node_t **node, line_t **line){

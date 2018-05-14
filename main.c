@@ -4,40 +4,57 @@
 #include <math.h>
 #include "meshpos.h"
 
+enum Frequency {
+    /* 越上面，優先權越高 */
+    Fast,
+    Normal,
+    Stable
+};
+struct rule_t {
+    enum Frequency freq;
+    unsigned int interval;
+};
+
 void daemon_init();
-unsigned isExecute();   //check time
-time_t default_time;
-time_t execute_time_previous;
-struct regular {
-    unsigned range;
-    unsigned cycle;
+unsigned int get_interval(enum Frequency freq); //取得 Frequency 定義的間格時間
+enum Frequency get_high_priority_frequency(enum Frequency *freqs, unsigned int size);   //取得參數中最高的優先權
+enum Frequency check_mesh_state();
+enum Frequency check_rssi_stability();
+void update_frequency();    //執行可能改變 frequency 的條件
+unsigned int isExecute();   //check time
+
+/* rule table, unit: sec */
+const unsigned int rule_size = 3;
+const struct rule_t rule_table[] = {
+    {Fast, 1},
+    {Normal, 2},
+    {Stable, 5}
 };
 
-const unsigned regular_size = 3;
-const struct regular regular_table[] = {
-    /* range 需案大小排列 */
-    {10, 1},
-    {20, 3},
-    {30, 5}
-};
-
+/* global variable */
+enum Frequency current_frequency = Fast;
+time_t previous_execute_time;
+time_t start_time; //test
 
 int main(int argc, char *argv[])
 {    
-    //cycle
-    default_time = time(NULL);
-    execute_time_previous = default_time;
+    //default
+    start_time = time(NULL);
+    previous_execute_time = time(NULL);
 
     //calc
     node_t *node = 0;
     line_t *line = 0;    
-    const unsigned int size = 3;
-    data_t data[3];      
+    const unsigned int data_size = 3;
+    data_t data[data_size];
 
-    daemon_init();
+    //daemon_init();
 
     while(1){
         sleep(1); //cycle delay
+
+        update_frequency();
+
         if(!isExecute())
             continue;
 
@@ -56,12 +73,12 @@ int main(int argc, char *argv[])
         data[2].rssi2 = -33;
 
         //position calc
-        triangle_calc(data, size, &node, &line);
+        triangle_calc(data, data_size, &node, &line);
 
         //resul
-        for(unsigned i=0; i<size; i++)
+        for(unsigned i=0; i<data_size; i++)
             printf("%s = (%f,%f)\n", node[i].bssid, node[i].point.X, node[i].point.Y);
-        for(unsigned i=0; i<size; i++)
+        for(unsigned i=0; i<data_size; i++)
             printf("%s:%s, distance = %f, RSSI = %f\n", line[i].node1->bssid, line[i].node2->bssid, line[i].distance, line[i].rssi_merge);
 
         //release
@@ -70,8 +87,7 @@ int main(int argc, char *argv[])
         if(line)
             free(line);
 
-        printf("cycle time:%ld, total time:%ld\n", time(NULL) - execute_time_previous, time(NULL) - default_time);
-        execute_time_previous = time(NULL); //default
+        printf("total time:%ld, frequency=%d\n", time(NULL) - start_time, current_frequency);
     }
 
     return 0;
@@ -84,28 +100,66 @@ void daemon_init(){
         exit(0);
 }
 
-unsigned isExecute(){
+unsigned int get_interval(enum Frequency freq){
     unsigned int i;
-    time_t current_time = time(NULL);
-    time_t execute_time = current_time - default_time;
+    for(i=0; i<rule_size; i++)
+        if(freq == rule_table[i].freq)
+            return rule_table[i].interval;
 
-    //最長 range 時間判斷
-    if(execute_time >= regular_table[regular_size - 1].range){
-        if(labs(current_time - execute_time_previous) >= regular_table[regular_size - 1].cycle) //與上一次經過了多久
-            return 1;
-        else
-            return 0;
-    }
+    return rule_table[0].interval; //防呆
+}
 
-    //若沒超過最長 range 時間
-    for(i=0; i<regular_size; i++)
-        if(execute_time <= regular_table[i].range){ //在哪個範圍裡
-            if(labs(current_time - execute_time_previous) >= regular_table[i].cycle) //與上一次經過了多久
-                return 1;
-            else
-                return 0;
+enum Frequency get_high_priority_frequency(enum Frequency *freqs, unsigned int size){
+    unsigned int i;
+    enum Frequency min = 1000;
+    for(i=0; i<size ;i++)
+        if(freqs[i] < min)
+            min = freqs[i];
+
+    return min;
+}
+
+enum Frequency check_mesh_state(){
+    time_t total_time = time(NULL) - start_time;
+    if(total_time > 50)
+        return Fast;
+    return Stable;
+}
+
+enum Frequency check_rssi_stability(){
+    time_t total_time = time(NULL) - start_time;
+    if(total_time > 10 && total_time < 30)
+        return Normal;
+    else if(total_time > 30)
+        return Stable;
+    else
+        return Fast;
+}
+
+void update_frequency(){
+    enum Frequency freqs[2];
+    freqs[0] = check_mesh_state();
+    freqs[1] = check_rssi_stability();
+
+    current_frequency = get_high_priority_frequency(freqs, 2);
+}
+
+unsigned int isExecute(){
+    unsigned int i;
+    unsigned int isExe = 0;
+    time_t interval_time = time(NULL) - previous_execute_time;
+
+    for(i=0; i<rule_size; i++)
+        if(interval_time >= get_interval(current_frequency)){
+            isExe = 1;
+            break;
         }
 
-    return 0;
+    if(isExe){
+        previous_execute_time = time(NULL); //default
+        return 1; //execute
+    }else{
+        return 0;
+    }
 }
 
