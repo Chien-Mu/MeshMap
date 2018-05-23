@@ -5,15 +5,21 @@ const float P0 = -33.0;
 const float Attenuation = 1.90;
 /* -------------------- */
 
-node_t init_node(void){
-    node_t d;
-    memset(&d, 0, sizeof(node_t));
+pos_data_t init_pos_data(void){
+    pos_data_t d;
+    memset(&d, 0, sizeof(pos_data_t));
     return d;
 }
 
-line_t init_line(void){
-    line_t d;
-    memset(&d, 0, sizeof(line_t));
+pos_node_t init_node(void){
+    pos_node_t d;
+    memset(&d, 0, sizeof(pos_node_t));
+    return d;
+}
+
+pos_line_t init_line(void){
+    pos_line_t d;
+    memset(&d, 0, sizeof(pos_line_t));
     return d;
 }
 
@@ -23,25 +29,26 @@ triangle_t init_triangle(void){
     return d;
 }
 
-unsigned int is_nodes_contain(node_t *nodes, unsigned int size, char *bssid){
-    /* 判斷字串(bssid) 是否存在 node array */
+///判斷字串(node_id) 是否存在 node array
+unsigned int is_nodes_contain(pos_node_t *nodes, unsigned int size, char *node_id){
     unsigned int i;
     for(i=0; i<size; i++)
-        if(!strcmp(bssid, nodes[i].bssid))
+        if(!strcmp(node_id, nodes[i].node_id))
             return 1;
     return 0; //沒找到
 }
 
-int get_node_index(node_t *nodes, unsigned int size, char *bssid){
-    /* 以字串(bssid)找出 node array index */
+///以字串(node_id)找出 node array index
+int get_node_index(pos_node_t *nodes, unsigned int size, char *node_id){
     unsigned int i;
     for(i=0; i<size; i++)
-        if(!strcmp(bssid, nodes[i].bssid))
+        if(!strcmp(node_id, nodes[i].node_id))
             return i;
     return -1; //沒找到
 }
 
-unsigned int assign_data(data_t *data, unsigned int size, node_t **nodes, line_t **lines){
+///將 pos_data 資料轉成 nodes and lines
+unsigned int assign_data(pos_data_t *data, unsigned int size, pos_node_t **nodes, pos_line_t **lines){
     unsigned int i;
     unsigned int node_count = 0;
 
@@ -50,8 +57,8 @@ unsigned int assign_data(data_t *data, unsigned int size, node_t **nodes, line_t
         return 0; //fail
 
     //alloc memory
-    *nodes = (node_t*)malloc(size*sizeof(node_t));
-    *lines = (line_t*)malloc(size*sizeof(line_t));
+    *nodes = (pos_node_t*)malloc(size*sizeof(pos_node_t));
+    *lines = (pos_line_t*)malloc(size*sizeof(pos_line_t));
     for(i=0; i<size; i++){
         (*nodes)[i] = init_node();
         (*lines)[i] = init_line();
@@ -60,21 +67,21 @@ unsigned int assign_data(data_t *data, unsigned int size, node_t **nodes, line_t
     //insert
     for(i=0; i<size; i++){
         //node
-        if(!is_nodes_contain(*nodes, size, data[i].bssid1)){
-            strcpy((*nodes)[node_count].bssid, data[i].bssid1);
+        if(!is_nodes_contain(*nodes, size, data[i].node1_id)){
+            strcpy((*nodes)[node_count].node_id, data[i].node1_id);
             (*nodes)[node_count].index = node_count;
             node_count++;
         }
-        if(!is_nodes_contain(*nodes, size, data[i].bssid2)){
-            strcpy((*nodes)[node_count].bssid, data[i].bssid2);
+        if(!is_nodes_contain(*nodes, size, data[i].node2_id)){
+            strcpy((*nodes)[node_count].node_id, data[i].node2_id);
             (*nodes)[node_count].index = node_count;
             node_count++;
         }
 
         //line
         (*lines)[i].index = i;
-        (*lines)[i].node1 = &(*nodes)[get_node_index(*nodes, size, data[i].bssid1)];
-        (*lines)[i].node2 = &(*nodes)[get_node_index(*nodes, size, data[i].bssid2)];
+        (*lines)[i].node1 = &(*nodes)[get_node_index(*nodes, size, data[i].node1_id)];
+        (*lines)[i].node2 = &(*nodes)[get_node_index(*nodes, size, data[i].node2_id)];
         (*lines)[i].rssi_1 = data[i].rssi1;
         (*lines)[i].rssi_2 = data[i].rssi2;
     }
@@ -82,11 +89,13 @@ unsigned int assign_data(data_t *data, unsigned int size, node_t **nodes, line_t
     return 1; //success
 }
 
+///座標距離計算
 float dist(point_t p1, point_t p2){
     return sqrt(pow(p2.X - p1.X,2) + pow(p2.Y - p1.Y,2));
 }
 
-void rssi2dist(line_t *lines, unsigned int size){
+///rssi to distance
+void rssi2dist(pos_line_t *lines, unsigned int size){
     /* 5G 與 2.4G 方程式不同 */
     const float n = Attenuation;
     float rssi;
@@ -99,10 +108,11 @@ void rssi2dist(line_t *lines, unsigned int size){
     }
 }
 
+///distance to coordinate
 void dist2coor(triangle_t triangle){
     float d01=0.0, d02=0.0, d12=0.0;
     float alpha=0.0, cosine=0.0;
-    node_t *a,*b,*c;
+    pos_node_t *a,*b,*c;
 
     //a coor (0,0)
     a = triangle.ab->node1;
@@ -156,7 +166,7 @@ void dist2coor(triangle_t triangle){
     //printf("(%f ,%f)\n", waps[2].X,waps[2].Y);
 }
 
-void triangle_calc(data_t *data, unsigned int size, node_t **node, line_t **line){
+void triangle_calc(pos_data_t *data, unsigned int size, pos_node_t **node, pos_line_t **line){
     triangle_t triangle;
 
     //allocate
