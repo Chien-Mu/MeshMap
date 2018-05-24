@@ -5,55 +5,69 @@
 #include "meshpos.h"
 #include "libcmm/libcmm.h"
 
+#define EXECUTE_NODE_MIN        3   //node 數量要大於等於此值才會執行 survey、定位動作
+#define HIGH_FREQUENCY          0   //最高優先權，目前是 Fast:0
+#define LOW_FREQUENCY           2   //最低優先權，目前是 Stable:2
 #define RSSI_BOX_COLLECT_SIZE   6   //搜集平均長度
-#define RSSI_BOX_MAX            32  //最多搜集幾台 AP
-#define RULE_SIZE               3   //RULE_TABLE size
+#define RSSI_BOX_MAX            32  //最多可搜集幾台 AP node
+#define RULE_SIZE               3   //RULE_TABLE array size
+#define CHECK_STATE_SEC         10  //is_check_state() 執行頻率，單位:sec
 
 enum Frequency {
-    /* 越上面，優先權越高 */
+    /* 定義順序為越上面，優先權越高 */
     Fast,
     Normal,
     Stable
 };
-struct rule_t {
+typedef struct rule_t {
     enum Frequency freq;                //define frequency
     unsigned int interval;              //unit: sec
     unsigned int rssi_stability_min;    //dbm average value
     unsigned int rssi_stability_max;    //dbm average value
-};
-struct rssi_box_t {
+}rule_t;
+typedef struct rssi_box_t {
     char node1_id[18];
     char node2_id[18];
     int rssi_collect[RSSI_BOX_COLLECT_SIZE];    //搜集 rssi 做 delta 差距判斷用
     unsigned int next_collect_pos;              //指向下一個儲存 collect index
-};
+}rssi_box_t;
 
 /* rule table */
-const struct rule_t RULE_TABLE[] = {
-    {Fast, 1, 5, 1000},
-    {Normal, 2, 3, 4},
-    {Stable, 5, 0, 2}
+const rule_t RULE_TABLE[] = {
+    {Fast, 5, 5, 1000},
+    {Normal, 8, 3, 4},
+    {Stable, 20, 0, 2}
 };
 
 /* Sharing function */
 unsigned int get_interval(enum Frequency freq); //取得 Frequency 定義的間格時間
 enum Frequency get_high_priority_frequency(enum Frequency *freqs, unsigned int size);   //取得參數中最高的優先權
+unsigned int get_cm_info_online_total(cm_info_t *ref_cm);
+cm_info_t init_cm_into(){
+    cm_info_t d;
+    memset(&d, 0, sizeof(cm_info_t));
+    return d;
+}
 
 /* main function */
 void daemon_init();
 unsigned int is_execute();  //注意：執行後，若回傳 true，則 PREVIOUS_EXECUTE_TIME 會被覆蓋(等於會重新計算時間)
+unsigned int is_check_state();  //執行比較不耗 mesh 設備效能的檢查，因此執行頻率與 is_execute() 不同。注意：執行後，若回傳 true，則 PREVIOUS_STATE_TIME 會被覆蓋(等於會重新計算時間)
 
 /* cm_info to pos_data function */
-int get_cm_info_index(char *bssid_5g, cm_info *ref_cm); //檢查 bssid_5g 是否為 ap node 設備，並回傳 cm_info index，若非 ap node 則 return -1
+int get_cm_info_index_for_bssid_5g(char *bssid_5g, cm_info_t *ref_cm); //回傳 cm_info index，若參數 bssid_5g 非 ap node 設備則 return -1
+int get_cm_info_index_for_link_id(char *id1, char *id2, cm_info_t *ref_cm); //回傳 cm_info index，若 link id 沒有在 cm_info 找出對應關係則 return -1
+int get_cm_info_index_for_nodeid(char *node_id, cm_info_t *ref_cm); //回傳 cm_info index，若找不到對應的 node_id  則 return -1
 unsigned int is_pos_data_link_exist(char *id1, char *id2, pos_data_t *data, unsigned int data_size);    //檢查 pos_data 裡面是否有存在此兩 id 的 link 關係
 unsigned int insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, pos_data_t *data, unsigned int data_size); //若 id1 or id2 有一項為空值(0),或是 pos_data 陣列內資料已滿，則不會存入 pos_data，且 return 0.
-void cm_info_to_pos_data(pos_data_t *data, cm_info *ref_cm);
+void cm_info_to_pos_data(pos_data_t *data, cm_info_t *ref_cm);
 void test_data_to_pos_data(pos_data_t *data);
+void input_test_cm_info_data(cm_info_t *ref_cm);
 unsigned int get_pos_data_link_data_size(pos_data_t *data, unsigned int data_size); //取得 pos_data link 資料的數量(not pos_data array length)
 
 /* change frequency */
 enum Frequency check_mesh_state();
-enum Frequency check_rssi_stability();
+enum Frequency check_rssi_stability();  //檢查 rssi 的穩定度。注意：若有任一組 rssi_collect[] rssi data 未塞滿至 RSSI_BOX_COLLECT_SIZE 量，則會直接 true HIGH_FREQUENCY，不會去判斷 rssi 穩定度
 void update_frequency();    //執行可能改變 frequency 的條件
 
 /* check rssi stability */
@@ -65,52 +79,73 @@ unsigned int get_rssibox_max_delta();   //輸出 rssi_boxs 間距差最大的值
 
 /* global variable */
 enum Frequency CURRENT_FREQUENCY;
-unsigned int RSSI_BOX_SIZE;
-struct rssi_box_t RSSI_BOXS[RSSI_BOX_MAX];
+unsigned int CURRENT_ONLINE_TOTAL;
+time_t DURATION_TIME;
 time_t PREVIOUS_EXECUTE_TIME;
-time_t START_TIME; //test
+time_t PREVIOUS_STATE_TIME;
+unsigned int RSSI_BOX_SIZE;
+rssi_box_t RSSI_BOXS[RSSI_BOX_MAX];
 
-int main(int argc, char *argv[])
-{    
+int main(void)
+{
     //daemon_init();
 
     //default
-    CURRENT_FREQUENCY = Fast;
-    START_TIME = time(NULL);
+    unsigned int i = 0;
+    CURRENT_FREQUENCY = HIGH_FREQUENCY;
+    CURRENT_ONLINE_TOTAL = 0;
+    DURATION_TIME = time(NULL);
     PREVIOUS_EXECUTE_TIME = time(NULL);
+    PREVIOUS_STATE_TIME = time(NULL);
     RSSI_BOX_SIZE = 0;
-    for(unsigned int i = 0; i<RSSI_BOX_MAX; i++){
-        RSSI_BOXS[i].node1_id = 0;
-        RSSI_BOXS[i].node2_id = 0;
-        RSSI_BOXS[i].next_collect_pos = 0;
-        for(unsigned int j = 0; j<RSSI_BOX_COLLECT_SIZE; j++)
-            RSSI_BOXS[i].rssi_collect[j] = 0;
-    }
+    for(i = 0; i<RSSI_BOX_MAX; i++)
+        memset(&RSSI_BOXS[i], 0, sizeof(rssi_box_t));
 
-    //calc
+    //calc    
     unsigned int data_size = 0;
     pos_data_t *data = 0;
     pos_node_t *node = 0;
     pos_line_t *line = 0;
+    cm_info_t mesh_info;
+    int index;
 
     while(1){
-        sleep(1); //cycle delay        
+        sleep(1); //cycle delay
+        mesh_info = init_cm_into(); //default
 
+        //check mesh state
+        if(is_check_state()){
+            //get_mesh_info(&mesh_info);
+            input_test_cm_info_data(&mesh_info);
+            CURRENT_ONLINE_TOTAL = get_cm_info_online_total(&mesh_info);
+            update_frequency();
+            printf("is_check_state():\tCURRENT_ONLINE_TOTAL=%d, duration time=%ld\n", CURRENT_ONLINE_TOTAL, time(NULL) - DURATION_TIME);
+        }
+
+        //如果有 offline 那就不用 update 定位位置了
+        if(CURRENT_ONLINE_TOTAL < EXECUTE_NODE_MIN)
+            continue;
+
+        //check position calc execute
         if(!is_execute())
             continue;
 
-        //get rssi info
-        cm_info_t mesh_info;
-        get_sitesurvey(&mesh_info);
-        get_mesh_info(&mesh_info);
+        //get all rssi info
+        mesh_info = init_cm_into(); //execute 與 state get_mesh_info() 的值不能混合
+        //get_mesh_info(&mesh_info);
+        input_test_cm_info_data(&mesh_info);
+        //get_sitesurvey(&mesh_info);        
 
-        if(mesh_info.node_cnt != 3) //是否就直接不執行了？
+        //data size 沒有 三台就不用定位了        
+        if(mesh_info.node_cnt != 3){
+            printf("Excepion:\tis_execute == true, mesh_info.node_cnt != 3 (%d), duration time=%ld\n", mesh_info.node_cnt, time(NULL) - DURATION_TIME);
             continue;
+        }
 
-        //alloc memory for pos_data
+        //alloc memory for pos_data        
         data_size = mesh_info.node_cnt;
         data = (pos_data_t*)malloc(data_size * sizeof(pos_data_t));
-        for(unsigned int i=0; i<data_size; i++)
+        for(i=0; i<data_size; i++)
             data[i] = init_pos_data();
 
         //assign to pos_data
@@ -118,6 +153,7 @@ int main(int argc, char *argv[])
         if(get_pos_data_link_data_size(data, data_size) != 3){  //如果 cm_info 取出的連線資料未達 3 組
             if(data)
                 free(data);
+            printf("Exception:\tcm_info 取出的連線資料未達 3 組, duration time=%ld\n", time(NULL) - DURATION_TIME);
             continue;
         }
 
@@ -128,11 +164,29 @@ int main(int argc, char *argv[])
         //position calc        
         triangle_calc(data, data_size, &node, &line);
 
-        //resuls
-        for(unsigned int i=0; i<data_size; i++)
-            printf("%s = (%f,%f)\n", node[i].bssid, node[i].point.X, node[i].point.Y);
-        for(unsigned int i=0; i<data_size; i++)
-            printf("%s:%s, distance = %f, RSSI = %f\n", line[i].node1->bssid, line[i].node2->bssid, line[i].distance, line[i].rssi_merge);
+        //resuls        
+        //node
+        for(i=0; i<data_size; i++){
+            index = get_cm_info_index_for_nodeid(node[i].node_id, &mesh_info);
+            if(index != -1){
+                mesh_info.node[index].x = node[i].point.X;
+                mesh_info.node[index].y = node[i].point.Y;
+            }
+        }
+        //line
+        for(i=0; i<data_size; i++){
+            index = get_cm_info_index_for_link_id(line[i].node1->node_id, line[i].node2->node_id, &mesh_info);
+            if(index != -1)
+                mesh_info.node[index].dist = line[i].distance;
+        }
+        //set_mesh_position(&mesh_info);
+
+        printf("update position:\n");
+        for(i=0; i<data_size; i++)
+            printf("\t%s = (%f,%f)\n", node[i].node_id, node[i].point.X, node[i].point.Y);
+        for(i=0; i<data_size; i++)
+            printf("\t%s:%s, distance = %f, RSSI = %f\n", line[i].node1->node_id, line[i].node2->node_id, line[i].distance, line[i].rssi_merge);
+        printf("\tduration time=%ld\n", time(NULL) - DURATION_TIME);
 
         //release
         if(node)
@@ -141,8 +195,6 @@ int main(int argc, char *argv[])
             free(line);
         if(data)
             free(data);
-
-        printf("total time:%ld, frequency=%d\n", time(NULL) - START_TIME, CURRENT_FREQUENCY);
     }
 
     return 0;
@@ -159,12 +211,22 @@ unsigned int get_interval(enum Frequency freq){
 
 enum Frequency get_high_priority_frequency(enum Frequency *freqs, unsigned int size){
     unsigned int i;
-    enum Frequency min = 1000;
+    enum Frequency min = LOW_FREQUENCY;
     for(i=0; i<size ;i++)
         if(freqs[i] < min)
             min = freqs[i];
 
     return min;
+}
+
+unsigned int get_cm_info_online_total(cm_info_t *ref_cm){
+    unsigned int i;
+    unsigned int count = 0;
+    for(i=0; i<(unsigned)ref_cm->node_cnt; i++)
+        if(ref_cm->node[i].online == 1)
+            count++;
+
+    return count;
 }
 
 void daemon_init(){
@@ -175,29 +237,74 @@ void daemon_init(){
 }
 
 unsigned int is_execute(){
-    unsigned int i;
     unsigned int isExe = 0;
     time_t interval_time = time(NULL) - PREVIOUS_EXECUTE_TIME;
 
-    for(i=0; i<RULE_SIZE; i++)
-        if(interval_time >= get_interval(CURRENT_FREQUENCY)){
-            isExe = 1;
+    if(interval_time >= get_interval(CURRENT_FREQUENCY))
+        isExe = 1;
+    printf("is_execute():\tisExe=%d, interval_time=%ld, get_interval=%d, duration time=%ld\n", isExe, interval_time, get_interval(CURRENT_FREQUENCY), time(NULL) - DURATION_TIME);
+    if(isExe)
+        PREVIOUS_EXECUTE_TIME = time(NULL); //default
+
+    return isExe;
+}
+
+unsigned int is_check_state(){
+    unsigned int isExe = 0;
+    time_t interval_time = time(NULL) - PREVIOUS_STATE_TIME;
+
+    if(interval_time >= CHECK_STATE_SEC)
+        isExe = 1;
+
+    if(isExe)
+        PREVIOUS_STATE_TIME = time(NULL); //default
+
+    return isExe;
+}
+
+int get_cm_info_index_for_bssid_5g(char *bssid_5g, cm_info_t *ref_cm){
+    unsigned int i;
+    int index = -1;
+    for(i = 0; i<(unsigned)ref_cm->node_cnt; i++)
+        if(!strcmp(ref_cm->node[i].bssid_5g, bssid_5g)){ //survey 是使用 5g
+            index = i;
             break;
         }
 
-    if(isExe){
-        PREVIOUS_EXECUTE_TIME = time(NULL); //default
-        return 1; //execute
-    }else{
-        return 0;
-    }
+    return index;
 }
 
-int get_cm_info_index(char *bssid_5g, cm_info *ref_cm){
+int get_cm_info_index_for_link_id(char *id1, char *id2, cm_info_t *ref_cm){
     unsigned int i;
-    unsigned int index = -1;
-    for(i = 0; i<ref_cm->node_cnt; i++)
-        if(!strcmp(ref_cm->node[i].bssid_5g, bssid_5g)){ //survey 是使用 5g
+    unsigned int tag = 0;
+    int index = -1;
+    for(i = 0; i<(unsigned)ref_cm->node_cnt; i++){
+        tag = 0;
+
+        if(!strcmp(ref_cm->node[i].id, id1))
+            tag = 1;
+        else if(!strcmp(ref_cm->node[i].id, id2))
+            tag = 2;
+
+        if(tag != 0){
+            if(tag == 1 && !strcmp(ref_cm->node[i].uplink, id2))
+                index = i;
+            else if(tag == 2 && !strcmp(ref_cm->node[i].uplink, id1))
+                index = i;
+        }
+
+        if(index != -1)
+            break;
+    }
+
+    return index;
+}
+
+int get_cm_info_index_for_nodeid(char *node_id, cm_info_t *ref_cm){
+    unsigned int i;
+    int index = -1;
+    for(i = 0; i<(unsigned)ref_cm->node_cnt; i++)
+        if(!strcmp(ref_cm->node[i].id, node_id)){
             index = i;
             break;
         }
@@ -237,7 +344,7 @@ unsigned int insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, pos_dat
     unsigned int is_success = 0;
 
     //如果沒有 uplink 資料則不存
-    if(id1 == 0 || id2 == 0)
+    if(!strcmp(id1, "") || !strcmp(id2, ""))
         return is_success;
 
     for(i = 0; i<data_size; i++)
@@ -255,12 +362,12 @@ unsigned int insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, pos_dat
     return is_success;
 }
 
-void cm_info_to_pos_data(pos_data_t *data, cm_info *ref_cm){
+void cm_info_to_pos_data(pos_data_t *data, cm_info_t *ref_cm){
     unsigned int i,j;
-    unsigned int index;
+    int index;
 
     //insert cm_info data
-    for(i = 0; i<ref_cm->node_cnt; i++)
+    for(i = 0; i<(unsigned)ref_cm->node_cnt; i++)
         insert_pos_data(ref_cm->node[i].id,
                         ref_cm->node[i].uplink,
                         ref_cm->node[i].rssi,
@@ -269,9 +376,9 @@ void cm_info_to_pos_data(pos_data_t *data, cm_info *ref_cm){
                         ref_cm->node_cnt);
 
     //insert survey data
-    for(i = 0; i<ref_cm->node_cnt; i++)
-        for(j = 0; j<ref_cm->node[i].vap5g_cnt ; j++){  //search survey data
-            index = get_cm_info_index(ref_cm->node[i].vap5g[j].bssid, ref_cm);  //找出 ap node
+    for(i = 0; i<(unsigned)ref_cm->node_cnt; i++)
+        for(j = 0; j<(unsigned)ref_cm->node[i].vap5g_cnt ; j++){  //search survey data
+            index = get_cm_info_index_for_bssid_5g(ref_cm->node[i].vap5g[j].bssid, ref_cm);  //找出 ap node
             if(index != -1)
                 if(!is_pos_data_link_exist(ref_cm->node[i].id, ref_cm->node[index].id, data, ref_cm->node_cnt)) //找出的 ap node 與發射 survey 的 node 是否已經有互相link (uplink).
                     insert_pos_data(ref_cm->node[i].id,
@@ -298,6 +405,37 @@ void test_data_to_pos_data(pos_data_t *data){
     data[2].rssi2 = -33;
 }
 
+void input_test_cm_info_data(cm_info_t *ref_cm){
+    ref_cm->node_cnt = 3;
+
+    strcpy(ref_cm->node[0].id, "aaa");
+    strcpy(ref_cm->node[0].bssid_5g, "aaa_5g");
+    ref_cm->node[0].online = 1;
+    ref_cm->node[0].rssi = -38;
+    ref_cm->node[0].vap5g_cnt = 0;
+
+    strcpy(ref_cm->node[1].id, "bbb");
+    strcpy(ref_cm->node[1].bssid_5g, "bbb_5g");
+    ref_cm->node[1].online = 1;
+    ref_cm->node[1].rssi = -37;
+    strcpy(ref_cm->node[1].uplink, "aaa");
+
+    ref_cm->node[1].vap5g_cnt = 5;
+    strcpy(ref_cm->node[1].vap5g[0].bssid, "123");
+    strcpy(ref_cm->node[1].vap5g[1].bssid, "1234");
+    strcpy(ref_cm->node[1].vap5g[2].bssid, "aaa_5g");
+    strcpy(ref_cm->node[1].vap5g[3].bssid, "ccc_5g");
+    strcpy(ref_cm->node[1].vap5g[4].bssid, "bbb_5g");
+    ref_cm->node[1].vap5g[3].signal = -35;
+
+    strcpy(ref_cm->node[2].id, "ccc");
+    strcpy(ref_cm->node[2].bssid_5g, "ccc_5g");
+    ref_cm->node[2].online = 1;
+    ref_cm->node[2].rssi = -36;
+    strcpy(ref_cm->node[2].uplink, "aaa");
+    ref_cm->node[2].vap5g_cnt = 0;
+}
+
 unsigned int get_pos_data_link_data_size(pos_data_t *data, unsigned int data_size){
     unsigned int i;
     unsigned int count = 0;
@@ -310,11 +448,33 @@ unsigned int get_pos_data_link_data_size(pos_data_t *data, unsigned int data_siz
 }
 
 enum Frequency check_mesh_state(){    
-    return Stable;
+    enum Frequency reFreq = HIGH_FREQUENCY;
+    if(CURRENT_ONLINE_TOTAL < EXECUTE_NODE_MIN)
+        reFreq = HIGH_FREQUENCY;
+    else
+        reFreq = LOW_FREQUENCY;
+
+    return reFreq;
 }
 
 enum Frequency check_rssi_stability(){
+    enum Frequency reFreq = HIGH_FREQUENCY;
 
+    //判斷是否有塞滿
+    if(!is_rssibox_collect_full())
+        return reFreq;
+
+    //判斷穩定度
+    unsigned int i;
+    unsigned int delta = get_rssibox_max_delta();
+
+    for(i=0; i<RULE_SIZE; i++)
+        if(delta >= RULE_TABLE[i].rssi_stability_min && delta <= RULE_TABLE[i].rssi_stability_max){
+            reFreq = RULE_TABLE[i].freq;
+            break;
+        }
+
+    return reFreq;
 }
 
 void update_frequency(){
@@ -323,11 +483,14 @@ void update_frequency(){
     freqs[1] = check_rssi_stability();
 
     CURRENT_FREQUENCY = get_high_priority_frequency(freqs, 2);
+    printf("update_frequency():\tCURRENT_FREQUENCY=%d "
+           "(check_mesh_state()=%d, check_rssi_stability=%d), "
+           "duration time=%ld\n", CURRENT_FREQUENCY, freqs[0], freqs[1], time(NULL) - DURATION_TIME);
 }
 
 int get_rssibox_rssi_index(char *node1_id, char *node2_id){
     unsigned int i,tag;
-    unsigned int index = -1;    //-1 == null
+    int index = -1;    //-1 == null
 
     for(i=0; i<RSSI_BOX_SIZE; i++){
         tag = 0;
@@ -344,7 +507,7 @@ int get_rssibox_rssi_index(char *node1_id, char *node2_id){
                 index = i;
         }
 
-        if(index != 0)
+        if(index != -1)
             break;
     }
 
@@ -359,8 +522,8 @@ void insert_rssibox(pos_data_t *data, unsigned int data_size){
         index = get_rssibox_rssi_index(data[i].node1_id, data[i].node2_id);
         if(index == -1){
             //new
-            RSSI_BOXS[RSSI_BOX_SIZE].node1_id = data[i].node1_id;
-            RSSI_BOXS[RSSI_BOX_SIZE].node2_id = data[i].node2_id;
+            strcpy(RSSI_BOXS[RSSI_BOX_SIZE].node1_id, data[i].node1_id);
+            strcpy(RSSI_BOXS[RSSI_BOX_SIZE].node2_id, data[i].node2_id);
             RSSI_BOXS[RSSI_BOX_SIZE].rssi_collect[0] = (data[i].rssi1 + data[i].rssi2) / 2;
             RSSI_BOXS[RSSI_BOX_SIZE].next_collect_pos = 1;
             RSSI_BOX_SIZE++;
@@ -378,6 +541,10 @@ void insert_rssibox(pos_data_t *data, unsigned int data_size){
 unsigned int is_rssibox_collect_full(){
     unsigned int i,j;
 
+    //如果 rssi_box 小於最低可計算數量 一樣判斷未滿
+    if(RSSI_BOX_SIZE < EXECUTE_NODE_MIN)
+        return 0;
+
     for(i = 0; i<RSSI_BOX_SIZE; i++)
         for(j = 0; j<RSSI_BOX_SIZE; j++)
             if(RSSI_BOXS[i].rssi_collect[j] == 0)
@@ -388,7 +555,7 @@ unsigned int is_rssibox_collect_full(){
 
 unsigned int get_rssibox_max_delta(){
     unsigned int i,j;
-    unsigned int delta = 0,delta_max = 0,max,min;
+    int delta = 0,delta_max = 0,max,min;
 
     for(i=0; i<RSSI_BOX_SIZE; i++){
         max = abs(RSSI_BOXS[i].rssi_collect[0]);
