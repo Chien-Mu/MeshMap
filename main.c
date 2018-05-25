@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <time.h>
 #include <math.h>
@@ -19,13 +20,13 @@ enum Frequency {
     Normal,
     Stable
 };
-typedef struct rule_t {
+typedef struct rule_t_ {
     enum Frequency freq;                //define frequency
     unsigned int interval;              //unit: sec
     unsigned int rssi_stability_min;    //dbm average value
     unsigned int rssi_stability_max;    //dbm average value
 }rule_t;
-typedef struct rssi_box_t {
+typedef struct rssi_box_t_ {
     char node1_id[18];
     char node2_id[18];
     int rssi_collect[RSSI_BOX_COLLECT_SIZE];    //搜集 rssi 做 delta 差距判斷用
@@ -34,9 +35,9 @@ typedef struct rssi_box_t {
 
 /* rule table */
 const rule_t RULE_TABLE[] = {
-    {Fast, 5, 5, 1000},
-    {Normal, 8, 3, 4},
-    {Stable, 20, 0, 2}
+    {   Fast,   5,  5,  1000    },
+    {   Normal, 8,  3,  4       },
+    {   Stable, 20, 0,  2       }
 };
 
 /* Sharing function */
@@ -51,15 +52,15 @@ cm_info_t init_cm_into(){
 
 /* main function */
 void daemon_init();
-unsigned int is_execute();  //注意：執行後，若回傳 true，則 PREVIOUS_EXECUTE_TIME 會被覆蓋(等於會重新計算時間)
-unsigned int is_check_state();  //執行比較不耗 mesh 設備效能的檢查，因此執行頻率與 is_execute() 不同。注意：執行後，若回傳 true，則 PREVIOUS_STATE_TIME 會被覆蓋(等於會重新計算時間)
+uint8_t is_execute();  //注意：執行後，若回傳 true，則 PREVIOUS_EXECUTE_TIME 會被覆蓋(等於會重新計算時間)
+uint8_t is_check_state();  //執行比較不耗 mesh 設備效能的檢查，因此執行頻率與 is_execute() 不同。注意：執行後，若回傳 true，則 PREVIOUS_STATE_TIME 會被覆蓋(等於會重新計算時間)
 
 /* cm_info to pos_data function */
 int get_cm_info_index_for_bssid_5g(char *bssid_5g, cm_info_t *ref_cm); //回傳 cm_info index，若參數 bssid_5g 非 ap node 設備則 return -1
 int get_cm_info_index_for_link_id(char *id1, char *id2, cm_info_t *ref_cm); //回傳 cm_info index，若 link id 沒有在 cm_info 找出對應關係則 return -1
 int get_cm_info_index_for_nodeid(char *node_id, cm_info_t *ref_cm); //回傳 cm_info index，若找不到對應的 node_id  則 return -1
-unsigned int is_pos_data_link_exist(char *id1, char *id2, pos_data_t *data, unsigned int data_size);    //檢查 pos_data 裡面是否有存在此兩 id 的 link 關係
-unsigned int insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, pos_data_t *data, unsigned int data_size); //若 id1 or id2 有一項為空值(0),或是 pos_data 陣列內資料已滿，則不會存入 pos_data，且 return 0.
+uint8_t is_pos_data_link_exist(char *id1, char *id2, pos_data_t *data, unsigned int data_size);    //檢查 pos_data 裡面是否有存在此兩 id 的 link 關係
+uint8_t insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, enum pos_link_type_e type, pos_data_t *data, unsigned int data_size);   //若 id1 or id2 有一項為空值(0),或是 pos_data 陣列內資料已滿，則不會存入 pos_data，且 return 0.
 void cm_info_to_pos_data(pos_data_t *data, cm_info_t *ref_cm);
 void test_data_to_pos_data(pos_data_t *data);
 void input_test_cm_info_data(cm_info_t *ref_cm);
@@ -73,7 +74,7 @@ void update_frequency();    //執行可能改變 frequency 的條件
 /* check rssi stability */
 int get_rssibox_rssi_index(char *node1_id, char *node2_id); //找出 rssi_box 同一個連線, -1 為找不到
 void insert_rssibox(pos_data_t *data, unsigned int data_size);  //如果 rssi_box 沒有相對應得 pos_data 資料會自動新增 rssi_box data，若 rssi_box 有相對應的 pos_data 則 rssi 資料會處於 Queue(先進先出) 覆蓋邏輯中.
-unsigned int is_rssibox_collect_full(); //檢查 rssi_boxs 是否每組 collect 都以裝滿
+uint8_t is_rssibox_collect_full(); //檢查 rssi_boxs 是否每組 collect 都以裝滿
 unsigned int get_rssibox_max_delta();   //輸出 rssi_boxs 間距差最大的值
 //要增加一個 check func，如果 collect 一直填不滿的情況，要將這組 rssi_box 刪除
 
@@ -185,7 +186,7 @@ int main(void)
         for(i=0; i<data_size; i++)
             printf("\t%s = (%f,%f)\n", node[i].node_id, node[i].point.X, node[i].point.Y);
         for(i=0; i<data_size; i++)
-            printf("\t%s:%s, distance = %f, RSSI = %f\n", line[i].node1->node_id, line[i].node2->node_id, line[i].distance, line[i].rssi_merge);
+            printf("\t%s:%s, distance = %f, RSSI = %f, link type = %d\n", line[i].node1->node_id, line[i].node2->node_id, line[i].distance, line[i].rssi_merge, line[i].type);
         printf("\tduration time=%ld\n", time(NULL) - DURATION_TIME);
 
         //release
@@ -236,8 +237,8 @@ void daemon_init(){
         exit(0);
 }
 
-unsigned int is_execute(){
-    unsigned int isExe = 0;
+uint8_t is_execute(){
+    uint8_t isExe = 0;
     time_t interval_time = time(NULL) - PREVIOUS_EXECUTE_TIME;
 
     if(interval_time >= get_interval(CURRENT_FREQUENCY))
@@ -249,8 +250,8 @@ unsigned int is_execute(){
     return isExe;
 }
 
-unsigned int is_check_state(){
-    unsigned int isExe = 0;
+uint8_t is_check_state(){
+    uint8_t isExe = 0;
     time_t interval_time = time(NULL) - PREVIOUS_STATE_TIME;
 
     if(interval_time >= CHECK_STATE_SEC)
@@ -312,10 +313,10 @@ int get_cm_info_index_for_nodeid(char *node_id, cm_info_t *ref_cm){
     return index;
 }
 
-unsigned int is_pos_data_link_exist(char *id1, char *id2, pos_data_t *data, unsigned int data_size){
+uint8_t is_pos_data_link_exist(char *id1, char *id2, pos_data_t *data, unsigned int data_size){
     unsigned int i;
-    unsigned int tag = 0;
-    unsigned int isExist = 0;
+    uint8_t tag = 0;
+    uint8_t isExist = 0;
 
     for(i = 0; i<data_size; i++){
         tag = 0;
@@ -332,16 +333,16 @@ unsigned int is_pos_data_link_exist(char *id1, char *id2, pos_data_t *data, unsi
                 isExist = 1;
         }
 
-        if(isExist != 0)
+        if(isExist)
             break;
     }
 
     return isExist;
 }
 
-unsigned int insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, pos_data_t *data, unsigned int data_size){
+uint8_t insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, enum pos_link_type_e type, pos_data_t *data, unsigned int data_size){
     unsigned int i;
-    unsigned int is_success = 0;
+    uint8_t is_success = 0;
 
     //如果沒有 uplink 資料則不存
     if(!strcmp(id1, "") || !strcmp(id2, ""))
@@ -353,6 +354,7 @@ unsigned int insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, pos_dat
             strcpy(data[i].node2_id, id2);
             data[i].rssi1 = rssi1;
             data[i].rssi2 = rssi2;
+            data[i].type = type;
             data[i].has_data = 1;
 
             is_success = 1;
@@ -372,6 +374,7 @@ void cm_info_to_pos_data(pos_data_t *data, cm_info_t *ref_cm){
                         ref_cm->node[i].uplink,
                         ref_cm->node[i].rssi,
                         ref_cm->node[i].rssi,
+                        Bridge,
                         data,
                         ref_cm->node_cnt);
 
@@ -385,6 +388,7 @@ void cm_info_to_pos_data(pos_data_t *data, cm_info_t *ref_cm){
                                     ref_cm->node[index].id,
                                     ref_cm->node[i].vap5g[j].signal,
                                     ref_cm->node[i].vap5g[j].signal,
+                                    SiteSurvey,
                                     data,
                                     ref_cm->node_cnt);
         }    
@@ -538,7 +542,7 @@ void insert_rssibox(pos_data_t *data, unsigned int data_size){
     }
 }
 
-unsigned int is_rssibox_collect_full(){
+uint8_t is_rssibox_collect_full(){
     unsigned int i,j;
 
     //如果 rssi_box 小於最低可計算數量 一樣判斷未滿

@@ -1,9 +1,27 @@
 #include "meshpos.h"
+#define DIST_ALGORITHM_TABLE_SIZE   3
 
-/* ---------5G--------- */
-const float P0 = -33.0;
-const float Attenuation = 1.90;
-/* -------------------- */
+/* signal_attenuation */
+#define P0                          -33.0f  //1公尺時的 rssi 值
+#define ATTENUATION                 1.9f   //衰減係數
+
+/* distance algorithm */
+float linear_regression_bridge(const int rssi){
+    return rssi;
+}
+float linear_regression_survey(const int rssi){
+    return rssi;
+}
+float signal_attenuation(const int rssi){
+    return (float)pow(10.0, (P0 - rssi) / (10.0 * ATTENUATION));
+}
+
+/* algorithm pair table */
+const pos_dist_algorithm_t DIST_ALGORITHM_TABLE[] = {
+    {   Bridge,         signal_attenuation    },
+    {   SiteSurvey,     signal_attenuation    },
+    {   ClientSurvey,   signal_attenuation          }
+};
 
 pos_data_t init_pos_data(void){
     pos_data_t d;
@@ -30,7 +48,7 @@ triangle_t init_triangle(void){
 }
 
 ///判斷字串(node_id) 是否存在 node array
-unsigned int is_nodes_contain(pos_node_t *nodes, unsigned int size, char *node_id){
+uint8_t is_nodes_contain(pos_node_t *nodes, unsigned int size, char *node_id){
     unsigned int i;
     for(i=0; i<size; i++)
         if(!strcmp(node_id, nodes[i].node_id))
@@ -48,7 +66,7 @@ int get_node_index(pos_node_t *nodes, unsigned int size, char *node_id){
 }
 
 ///將 pos_data 資料轉成 nodes and lines
-unsigned int assign_data(pos_data_t *data, unsigned int size, pos_node_t **nodes, pos_line_t **lines){
+uint8_t assign_data(pos_data_t *data, unsigned int size, pos_node_t **nodes, pos_line_t **lines){
     unsigned int i;
     unsigned int node_count = 0;
 
@@ -84,6 +102,7 @@ unsigned int assign_data(pos_data_t *data, unsigned int size, pos_node_t **nodes
         (*lines)[i].node2 = &(*nodes)[get_node_index(*nodes, size, data[i].node2_id)];
         (*lines)[i].rssi_1 = data[i].rssi1;
         (*lines)[i].rssi_2 = data[i].rssi2;
+        (*lines)[i].type = data[i].type;
     }
 
     return 1; //success
@@ -96,14 +115,19 @@ float dist(point_t p1, point_t p2){
 
 ///rssi to distance
 void rssi2dist(pos_line_t *lines, unsigned int size){
-    /* 5G 與 2.4G 方程式不同 */
-    const float n = Attenuation;
-    float rssi;
-    unsigned int i;
+    float rssi,dist = 0.0f;
+    unsigned int i,j;
 
     for(i=0;i<size;i++){
         rssi = (float)(lines[i].rssi_1 + lines[i].rssi_2) / 2.0;
-        lines[i].distance = pow(10.0, (P0-rssi)/(10.0*n));
+
+        for(j=0; j<DIST_ALGORITHM_TABLE_SIZE; j++)
+            if(lines[i].type == DIST_ALGORITHM_TABLE[j].type){
+                dist = DIST_ALGORITHM_TABLE[j].func(rssi);
+                break;
+            }
+
+        lines[i].distance = dist;
         lines[i].rssi_merge = rssi;
     }
 }
