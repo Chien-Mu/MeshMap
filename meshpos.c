@@ -1,4 +1,5 @@
 #include "meshpos.h"
+
 #define DIST_ALGORITHM_TABLE_SIZE   3
 
 /* signal_attenuation */

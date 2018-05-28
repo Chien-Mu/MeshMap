@@ -2,9 +2,10 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <time.h>
-#include <math.h>
 #include "meshpos.h"
-#include "libcmm/libcmm.h"
+#include "libcmm.h"
+
+//#define DEBUG                     //use x86 debug
 
 #define EXECUTE_NODE_MIN        3   //node 數量要大於等於此值才會執行 survey、定位動作
 #define HIGH_FREQUENCY          0   //最高優先權，目前是 Fast:0
@@ -21,10 +22,10 @@ enum Frequency {
     Stable
 };
 typedef struct rule_t_ {
-    enum Frequency freq;                //define frequency
+    enum Frequency freq;                //frequency ident
     unsigned int interval;              //unit: sec
-    unsigned int rssi_stability_min;    //dbm average value
-    unsigned int rssi_stability_max;    //dbm average value
+    unsigned int rssi_stability_min;    //dbm delta value
+    unsigned int rssi_stability_max;    //dbm delta value
 }rule_t;
 typedef struct rssi_box_t_ {
     char node1_id[18];
@@ -59,12 +60,12 @@ uint8_t is_check_state();  //執行比較不耗 mesh 設備效能的檢查，因
 int get_cm_info_index_for_bssid_5g(char *bssid_5g, cm_info_t *ref_cm); //回傳 cm_info index，若參數 bssid_5g 非 ap node 設備則 return -1
 int get_cm_info_index_for_link_id(char *id1, char *id2, cm_info_t *ref_cm); //回傳 cm_info index，若 link id 沒有在 cm_info 找出對應關係則 return -1
 int get_cm_info_index_for_nodeid(char *node_id, cm_info_t *ref_cm); //回傳 cm_info index，若找不到對應的 node_id  則 return -1
+unsigned int get_pos_data_link_data_size(pos_data_t *data, unsigned int data_size); //取得 pos_data link 資料的數量(not pos_data array length)
 uint8_t is_pos_data_link_exist(char *id1, char *id2, pos_data_t *data, unsigned int data_size);    //檢查 pos_data 裡面是否有存在此兩 id 的 link 關係
 uint8_t insert_pos_data(char *id1, char *id2, int rssi1, int rssi2, enum pos_link_type_e type, pos_data_t *data, unsigned int data_size);   //若 id1 or id2 有一項為空值(0),或是 pos_data 陣列內資料已滿，則不會存入 pos_data，且 return 0.
 void cm_info_to_pos_data(pos_data_t *data, cm_info_t *ref_cm);
 void test_data_to_pos_data(pos_data_t *data);
 void input_test_cm_info_data(cm_info_t *ref_cm);
-unsigned int get_pos_data_link_data_size(pos_data_t *data, unsigned int data_size); //取得 pos_data link 資料的數量(not pos_data array length)
 
 /* change frequency */
 enum Frequency check_mesh_state();
@@ -89,7 +90,9 @@ rssi_box_t RSSI_BOXS[RSSI_BOX_MAX];
 
 int main(void)
 {
+#ifndef DEBUG
     //daemon_init();
+#endif
 
     //default
     unsigned int i = 0;
@@ -116,8 +119,25 @@ int main(void)
 
         //check mesh state
         if(is_check_state()){
-            //get_mesh_info(&mesh_info);
+#ifndef DEBUG
+            get_mesh_info(&mesh_info);
+#else
             input_test_cm_info_data(&mesh_info);
+#endif
+            for(i=0; i<(unsigned)mesh_info.node_cnt; i++)
+                printf("node[%d]: id:%s, name:%s, bssid_5g:%s\n"
+                       "\tuplink:%s, rssi:%d, dist:%f, (%f,%f)\n",
+                       i,
+                       mesh_info.node[i].id,
+                       mesh_info.node[i].name,
+                       mesh_info.node[i].bssid_5g,
+                       mesh_info.node[i].uplink,
+                       mesh_info.node[i].rssi,
+                       mesh_info.node[i].dist,
+                       mesh_info.node[i].x,
+                       mesh_info.node[i].y);
+            printf("duration time=%ld\n", time(NULL) - DURATION_TIME);
+
             CURRENT_ONLINE_TOTAL = get_cm_info_online_total(&mesh_info);
             update_frequency();
             printf("is_check_state():\tCURRENT_ONLINE_TOTAL=%d, duration time=%ld\n", CURRENT_ONLINE_TOTAL, time(NULL) - DURATION_TIME);
@@ -133,9 +153,12 @@ int main(void)
 
         //get all rssi info
         mesh_info = init_cm_into(); //execute 與 state get_mesh_info() 的值不能混合
-        //get_mesh_info(&mesh_info);
+#ifndef DEBUG
+        get_mesh_info(&mesh_info);
+        get_sitesurvey(&mesh_info);
+#else
         input_test_cm_info_data(&mesh_info);
-        //get_sitesurvey(&mesh_info);        
+#endif
 
         //data size 沒有 三台就不用定位了        
         if(mesh_info.node_cnt != 3){
@@ -165,8 +188,7 @@ int main(void)
         //position calc        
         triangle_calc(data, data_size, &node, &line);
 
-        //resuls        
-        //node
+        //resuls node
         for(i=0; i<data_size; i++){
             index = get_cm_info_index_for_nodeid(node[i].node_id, &mesh_info);
             if(index != -1){
@@ -174,13 +196,15 @@ int main(void)
                 mesh_info.node[index].y = node[i].point.Y;
             }
         }
-        //line
+        //resuls line
         for(i=0; i<data_size; i++){
             index = get_cm_info_index_for_link_id(line[i].node1->node_id, line[i].node2->node_id, &mesh_info);
             if(index != -1)
                 mesh_info.node[index].dist = line[i].distance;
         }
-        //set_mesh_position(&mesh_info);
+#ifndef DEBUG
+        set_mesh_position(&mesh_info);
+#endif
 
         printf("update position:\n");
         for(i=0; i<data_size; i++)
