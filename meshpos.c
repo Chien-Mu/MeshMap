@@ -7,11 +7,16 @@
 #define ATTENUATION                 1.9f   //衰減係數
 
 /* distance algorithm */
-float linear_regression_bridge(const int rssi){
-    return rssi;
+float linear_regression_bridge(const int rssi){    
+    return (float)exp((rssi + 30.849) / -8.62);
 }
-float linear_regression_survey(const int rssi){
-    return rssi;
+float linear_regression_survey(const int _signal){
+    float dist = 0.0f;
+    if(_signal == 100)
+        dist = 6;
+    else
+        dist = 15;
+    return dist;
 }
 float signal_attenuation(const int rssi){
     return (float)pow(10.0, (P0 - rssi) / (10.0 * ATTENUATION));
@@ -19,8 +24,8 @@ float signal_attenuation(const int rssi){
 
 /* algorithm pair table */
 const pos_dist_algorithm_t DIST_ALGORITHM_TABLE[] = {
-    {   Bridge,         signal_attenuation    },
-    {   SiteSurvey,     signal_attenuation    },
+    {   Bridge,         linear_regression_bridge    },
+    {   SiteSurvey,     linear_regression_survey    },
     {   ClientSurvey,   signal_attenuation          }
 };
 

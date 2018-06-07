@@ -4,9 +4,9 @@ CFLAGS += -I$(ROOTDIR)/lib/libcmm
 LDFLAGS := -L$(ROOTDIR)/lib/libcmm -lcmm -lm
 
 MAP:= cmmmap
-TEST:= cmmtest
-OBJS_MAP := meshpos.o main.o
-OBJS_test := client.o
+TEST:= cmmmapvis
+OBJS_MAP := meshpos.o meshmap.o
+OBJS_TEST := meshposvis.o
 
 
 all: $(MAP)
